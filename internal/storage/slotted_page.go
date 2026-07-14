@@ -1,9 +1,10 @@
 package storage
 
 const (
-	PageSize      uint16 = 8192
-	HeaderSize    uint16 = 24
-	SlotEntrySize uint16 = 4
+	PageSize        uint16 = 8192
+	HeaderSize      uint16 = 24
+	SlotEntrySize   uint16 = 4
+	TupleHeaderSize uint16 = 8
 )
 
 // === SlottedPage Define ===
@@ -36,6 +37,11 @@ func (p *SlottedPage) SlotDirectory() []SlotEntry {
 	}
 
 	return entries
+}
+
+// Find Tuple by the pointer val (from an Entry)
+func (p *SlottedPage) LocateTupleByEntry(entry *SlotEntry) *Tuple {
+	return &Tuple{p.data[entry.Offset() : entry.Offset()+entry.Length()]}
 }
 
 // --- Tool Function ---

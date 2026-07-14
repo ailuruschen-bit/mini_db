@@ -28,7 +28,14 @@
 
 ---
 
-## 4. コアロジック：双向成長 (Dual-Directional Growth)
+## 4. 他のバイト詳細 (The Rest Byte-level Details)
+| オフセット            | 長さ  | 名称    | 役割と説明 (Description)                                              |
+| :-------------------- | :---- | :------ | :-------------------------------------------------------------------- |
+| **(SlotEntry)30 bit** | 2 bit | `Flags` | **Status of Slot:** UNUSED(00), NORMAL(01), DELETED(10), REDIRECT(11) |
+
+---
+
+## 5. コアロジック：双向成長 (Dual-Directional Growth)
 
 スロットページ方式の最大の特徴は、**「ヘッダーに近い方は後ろへ、末尾に近い方は前へ」** 成長する構造です。
 
@@ -44,22 +51,6 @@
 3. **空き領域 (Free Space):**
    - `pd_lower`（スロットの末尾）と `pd_upper`（データの先端）の間のギャップです。
    - `pd_lower + 4 > pd_upper` となった時点で、そのページは「Full」と判定されます。
-
----
-
-## 5. 実装上の考慮事項 (Implementation Notes)
-
-### Java (NIO ByteBuffer)
-Apple Silicon (M1) の性能を引き出すため、`java.nio.ByteBuffer` の **Direct Buffer** を使用してメモリマップドファイルに近い速度で操作します。
-
-```java
-// スロットのパック例 (Offset 15bit | Flags 2bit | Length 15bit)
-int slot = (offset << 17) | (flags << 15) | (length);
-buffer.putInt(lower, slot);
-```
-
-### フラグメンテーション (Fragmentation)
-レコードの削除や更新によってページ内に「虫食い」状態の空きができる場合があります。本プロジェクトでは、必要に応じて **Page Reorganization（ページ再編成）** を行い、データを詰め直すことで空き領域を統合するロジックを実装します。
 
 ---
 

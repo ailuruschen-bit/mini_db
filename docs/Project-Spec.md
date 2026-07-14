@@ -1,4 +1,4 @@
-# MicroDB: A PostgreSQL-inspired Disk-Oriented Database Engine
+# minidb: A PostgreSQL-inspired Disk-Oriented Database Engine
 ## プロジェクト要件定義書 (Requirement Specification)
 
 ---

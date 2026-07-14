@@ -1,5 +1,7 @@
 # minidb
 
+**English** | [日本語](README.ja.md)
+
 > A PostgreSQL-inspired, disk-oriented relational database engine, written from scratch in Go.
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)

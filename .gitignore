@@ -31,6 +31,9 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# macOS
+.DS_Store
+
 # key
 ailuruschen-bit
 ailuruschen-bit.pub

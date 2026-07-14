@@ -29,9 +29,11 @@
 ---
 
 ## 4. 他のバイト詳細 (The Rest Byte-level Details)
-| オフセット            | 長さ  | 名称    | 役割と説明 (Description)                                              |
-| :-------------------- | :---- | :------ | :-------------------------------------------------------------------- |
-| **(SlotEntry)30 bit** | 2 bit | `Flags` | **Status of Slot:** UNUSED(00), NORMAL(01), DELETED(10), REDIRECT(11) |
+| オフセット            | 長さ                            | 名称           | 役割と説明 (Description)                                              |
+| :-------------------- | :------------------------------ | :------------- | :-------------------------------------------------------------------- |
+| **(SlotEntry)30 bit** | 2 bit                           | `Flags`        | **Status of Slot:** UNUSED(00), NORMAL(01), DELETED(10), REDIRECT(11) |
+| **(Tuple)0 bit**      | 8 byte                          | `tuple_header` | MVCC controle, tuple size, status flags, field number                 |
+| **(Tuple)8 byte**     | column number * 1 bit(at least) | `null_bitmap`  | save *null*                                                           |
 
 ---
 

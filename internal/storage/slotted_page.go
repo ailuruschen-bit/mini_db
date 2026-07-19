@@ -7,8 +7,22 @@ const (
 	TupleHeaderSize uint16 = 8
 )
 
+// noCopy triggers go vet's copylock check when a value embedding it is copied
+// by value. It implements sync.Locker but does nothing at runtime and is
+// zero-sized, so it adds neither behavior nor memory overhead.
+type noCopy struct{}
+
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}
+
 // === SlottedPage Define ===
+//
+// SlottedPage owns an 8KB backing array; Header()/SlotDirectory()/Tuple all
+// hand out pointers into that array. Copying a SlottedPage by value would
+// detach those views from the copy, so it must only be passed by pointer.
+// The embedded noCopy makes `go vet` flag any accidental value copy.
 type SlottedPage struct {
+	_    noCopy
 	data [PageSize]byte
 }
 
@@ -22,6 +36,10 @@ func (p *SlottedPage) Header() *PageHeader {
 }
 
 // Slot Directory: an array of SlotEntry
+//
+// The returned SlotEntry values are copies, but each holds a pointer into the
+// page's backing array, so mutating a returned entry (via its setters) still
+// writes through to this page.
 func (p *SlottedPage) SlotDirectory() []SlotEntry {
 	h := p.Header()
 
@@ -46,5 +64,5 @@ func (p *SlottedPage) LocateTupleByEntry(entry *SlotEntry) *Tuple {
 
 // --- Tool Function ---
 func NewSlottedPage(data [PageSize]byte) *SlottedPage {
-	return &SlottedPage{data}
+	return &SlottedPage{data: data}
 }

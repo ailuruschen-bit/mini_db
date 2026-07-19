@@ -45,7 +45,7 @@ func (s *SlotEntry) SetOffset(val uint16) (bool, error) {
 	return true, nil
 }
 
-// Length: the length of slot (15 bit)
+// Length: byte length of the tuple this slot points to (15 bit)
 func (s *SlotEntry) Length() uint16 {
 	bitWindow := s.data[0:]
 	bitVal := binary.BigEndian.Uint32(bitWindow)

@@ -4,7 +4,7 @@ const (
 	PageSize        uint16 = 8192
 	HeaderSize      uint16 = 24
 	SlotEntrySize   uint16 = 4
-	TupleHeaderSize uint16 = 8
+	TupleHeaderSize uint16 = 12
 )
 
 // noCopy triggers go vet's copylock check when a value embedding it is copied

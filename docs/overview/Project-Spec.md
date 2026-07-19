@@ -7,8 +7,7 @@
 
 ### 1. Project Overview
 
-minidb is a disk-oriented relational database engine built from scratch in Go,
-modeled on PostgreSQL's internal architecture.
+minidb is a disk-oriented relational database engine built from scratch in Go, modeled on PostgreSQL's internal architecture.
 
 **Goals:**
 * Deeply understand the low-level machinery of a database (storage, indexing, transactions).
@@ -20,8 +19,7 @@ modeled on PostgreSQL's internal architecture.
 ### 2. Core Features
 
 #### ① Interface & Connectivity
-* **CLI:** a command-line tool mimicking PostgreSQL's `psql` style — connect to
-  the server and browse metadata from the terminal.
+* **CLI:** a command-line tool mimicking PostgreSQL's `psql` style — connect to the server and browse metadata from the terminal.
 * **Multi-database management:** create multiple independent databases via `CREATE DATABASE`.
 * **SQL execution:** support for basic DDL and DML.
 
@@ -30,15 +28,13 @@ modeled on PostgreSQL's internal architecture.
 * **Constraint checks:** `NOT NULL` and `UNIQUE`.
 
 #### ③ Storage & Indexing
-* **Heap File Storage:** data managed in fixed 8 KB pages using the PostgreSQL-style
-  **Slotted Page** structure.
+* **Heap File Storage:** data managed in fixed 8 KB pages using the PostgreSQL-style **Slotted Page** structure.
 * **B-Tree Index:** O(log N) lookups over large datasets.
 * **Buffer Pool Manager:** efficient memory/disk synchronization using an LRU policy.
 
 #### ④ Transactions & ACID
 * **ACID guarantees:** atomicity, consistency, isolation, durability.
-* **WAL (Write-Ahead Logging):** log changes before applying them to guarantee
-  crash recovery.
+* **WAL (Write-Ahead Logging):** log changes before applying them to guarantee crash recovery.
 * **Isolation Level:** concurrency control targeting "Read Committed".
 
 #### ⑤ Language Support

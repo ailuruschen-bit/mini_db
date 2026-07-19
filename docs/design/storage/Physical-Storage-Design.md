@@ -2,9 +2,7 @@
 
 > Language: **English** | [日本語](Physical-Storage-Design.ja.md)
 
-The storage engine models PostgreSQL's on-disk structures and adopts the
-**Slotted Page** layout. A fixed-size page manages variable-length records
-efficiently, minimizing disk I/O.
+The storage engine models PostgreSQL's on-disk structures and adopts the **Slotted Page** layout. A fixed-size page manages variable-length records efficiently, minimizing disk I/O.
 
 ---
 
@@ -19,16 +17,13 @@ These map one-to-one to the constants in `internal/storage/slotted_page.go`.
 | `SlotEntrySize`   | 4      | Size of a single slot entry in bytes      |
 | `TupleHeaderSize` | 12     | Size of a tuple header in bytes           |
 
-8 KB matches the block size of modern SSDs (notably the NVMe SSD on Apple
-Silicon), which is the target hardware for this project.
+8 KB matches the block size of modern SSDs (notably the NVMe SSD on Apple Silicon), which is the target hardware for this project.
 
 ---
 
 ## 2. Page Layout
 
-The standard page size is **8,192 bytes (8 KB)**. The slot directory grows
-downward from just after the header, while tuple data grows upward from the end
-of the page; the gap between them (`pd_lower` … `pd_upper`) is the free space.
+The standard page size is **8,192 bytes (8 KB)**. The slot directory grows downward from just after the header, while tuple data grows upward from the end of the page; the gap between them (`pd_lower` … `pd_upper`) is the free space.
 
 ![Slotted page layout](assets/Slotted-Page.png)
 
@@ -53,9 +48,7 @@ All multi-byte fields are **big-endian**.
 
 ## 4. Slot Directory & Slot Entry (4 bytes each)
 
-The slot directory is an array of fixed 4-byte **slot entries** occupying
-`[HeaderSize, pd_lower)`. Each entry acts as an indirection: the slot number
-(ID) stays stable even when the physical tuple moves within the page.
+The slot directory is an array of fixed 4-byte **slot entries** occupying `[HeaderSize, pd_lower)`. Each entry acts as an indirection: the slot number (ID) stays stable even when the physical tuple moves within the page.
 
 ### Slot Entry bit layout (32 bits, big-endian)
 
@@ -81,9 +74,7 @@ bit 31                    17 16                      2 1        0
 | `10`  | `DELETED`  | Tuple is dead; slot reclaimable after VACUUM.               |
 | `11`  | `REDIRECT` | Slot redirects to another slot (for update chains / HOT).   |
 
-> These flags describe the **physical** state of the line pointer, independent
-> of MVCC visibility. Logical visibility is decided by the tuple's
-> `t_xmin` / `t_xmax` (Section 5).
+> These flags describe the **physical** state of the line pointer, independent of MVCC visibility. Logical visibility is decided by the tuple's `t_xmin` / `t_xmax` (Section 5).
 
 ---
 
@@ -99,11 +90,8 @@ A tuple is laid out as: **tuple header → null bitmap (optional) → column dat
 +------------+-------------+--------------------------------+
 ```
 
-- `null_bitmap` is present only when the `HASNULL` hint bit is set; it holds
-  one bit per column.
-- `t_hoff` records the offset from the tuple start to the column data, i.e. it
-  points past the header and null bitmap. It replaces a redundant total-size
-  field, since the tuple's total byte length already lives in `SlotEntry.Length`.
+- `null_bitmap` is present only when the `HASNULL` hint bit is set; it holds one bit per column.
+- `t_hoff` records the offset from the tuple start to the column data, i.e. it points past the header and null bitmap. It replaces a redundant total-size field, since the tuple's total byte length already lives in `SlotEntry.Length`.
 
 ### 5.1 Tuple Header (12 bytes, big-endian)
 
@@ -117,9 +105,7 @@ A tuple is laid out as: **tuple header → null bitmap (optional) → column dat
 
 ### 5.2 MVCC hint bits (the 6-bit `flags` field)
 
-Hint bits cache the commit/abort status of `t_xmin` / `t_xmax` so that
-visibility checks can avoid a lookup into the transaction status log (CLOG,
-introduced in the transaction phase).
+Hint bits cache the commit/abort status of `t_xmin` / `t_xmax` so that visibility checks can avoid a lookup into the transaction status log (CLOG, introduced in the transaction phase).
 
 | Bit | Name             | Meaning                                          |
 | :-- | :--------------- | :----------------------------------------------- |
@@ -135,28 +121,19 @@ introduced in the transaction phase).
 A tuple is visible to a snapshot **S** when:
 
 1. `t_xmin` is committed and visible to **S**, **and**
-2. `t_xmax` is invalid (`0`), **or** the deleting transaction is aborted, **or**
-   it is not yet committed/visible to **S**.
+2. `t_xmax` is invalid (`0`), **or** the deleting transaction is aborted, **or** it is not yet committed/visible to **S**.
 
-Full evaluation depends on the transaction status log and snapshot logic, which
-belong to the transaction phase. The storage layer only reserves the fields
-(`t_xmin`, `t_xmax`, hint bits) that this rule requires.
+Full evaluation depends on the transaction status log and snapshot logic, which belong to the transaction phase. The storage layer only reserves the fields (`t_xmin`, `t_xmax`, hint bits) that this rule requires.
 
 ---
 
 ## 6. Core Logic: Dual-Directional Growth
 
-The defining trait of the slotted page is that its two regions grow **toward
-each other**:
+The defining trait of the slotted page is that its two regions grow **toward each other**:
 
-1. **Slot Directory** grows downward from just after the header. Each 4-byte
-   entry records where a tuple lives (`Offset`) and its `Length`. Because the
-   slot number is stable, the tuple can be relocated within the page without
-   invalidating references to it.
+1. **Slot Directory** grows downward from just after the header. Each 4-byte entry records where a tuple lives (`Offset`) and its `Length`. Because the slot number is stable, the tuple can be relocated within the page without invalidating references to it.
 2. **Tuple Data** grows upward from the end of the page.
-3. **Free Space** is the gap between `pd_lower` (end of slot directory) and
-   `pd_upper` (start of tuple data). The page is considered **full** once
-   `pd_lower + SlotEntrySize > pd_upper` (no room for another slot + tuple).
+3. **Free Space** is the gap between `pd_lower` (end of slot directory) and `pd_upper` (start of tuple data). The page is considered **full** once `pd_lower + SlotEntrySize > pd_upper` (no room for another slot + tuple).
 
 ---
 

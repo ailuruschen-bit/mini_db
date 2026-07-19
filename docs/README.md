@@ -2,8 +2,7 @@
 
 > Language: **English** | [日本語](README.ja.md)
 
-Documentation is organized by purpose. Every document is bilingual: the base
-file (`*.md`) is English, and its `*.ja.md` sibling is Japanese.
+Documentation is organized by purpose. Every document is bilingual: the base file (`*.md`) is English, and its `*.ja.md` sibling is Japanese.
 
 ## Structure
 
@@ -23,4 +22,6 @@ file (`*.md`) is English, and its `*.ja.md` sibling is Japanese.
   - [Physical Storage Design](design/storage/Physical-Storage-Design.md)
 
 ### Testing
-- _(to be added as the testing phase begins)_
+- [Test Conventions](testing/Test-Conventions.md) — global rules for all modules
+- **Storage**
+  - _(module test plan — to be added)_

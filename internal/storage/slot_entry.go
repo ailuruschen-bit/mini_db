@@ -87,7 +87,7 @@ func (s *SlotEntry) Flag() byte {
 
 func (s *SlotEntry) SetFlag(val byte) (bool, error) {
 	if val > maxVal2 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
+		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal2)
 	}
 
 	bitWindow := s.data[2:]

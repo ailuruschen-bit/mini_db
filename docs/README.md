@@ -24,4 +24,4 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
 ### Testing
 - [Test Conventions](testing/Test-Conventions.md) — global rules for all modules
 - **Storage**
-  - _(module test plan — to be added)_
+  - [Storage Module Test Plan](testing/storage/Storage-Test-Plan.md)

@@ -24,4 +24,4 @@
 ### テスト
 - [テスト規約](testing/Test-Conventions.ja.md) — 全モジュール共通のルール
 - **ストレージ**
-  - _(モジュールテスト計画 — 追加予定)_
+  - [ストレージモジュール テスト計画](testing/storage/Storage-Test-Plan.ja.md)

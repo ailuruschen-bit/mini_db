@@ -125,12 +125,23 @@ func TestTupleHeaderRejectsOverflow(t *testing.T) {
 
 // Golden layout for the whole 12-byte header.
 //
+// These values are byte-layout probes, NOT a semantically valid tuple — do not
+// read meaning into their combination. Each is chosen to be non-zero, distinct
+// and asymmetric so that a wrong offset, a reversed byte order or a swapped
+// field cannot pass unnoticed. t_xmax is a byte ladder, which makes any
+// reordering visible at a glance. The packed pair uses alternating bit patterns
+// so that a mis-shift disturbs both bytes of the word.
+//
+// The expected bytes are hard-coded rather than recomputed from the same
+// shifts the implementation uses: a formula copied from the code would move in
+// lockstep with a bug in it.
+//
 //	t_xmin    = 0xDEADBEEF          -> DE AD BE EF
 //	t_xmax    = 0x01020304          -> 01 02 03 04
-//	flags     = 0x2A (6b)  << 10 \
+//	flags     = 0x2A  (6b) << 10 \
 //	col_count = 0x155 (10b)       > -> A9 55
-//	t_hoff    = 14                  -> 0E
-//	reserved                        -> 00
+//	t_hoff    = 0xA5                -> A5
+//	reserved  (never written)       -> 00
 func TestTupleHeaderGoldenLayout(t *testing.T) {
 	h := blankTupleHeader()
 
@@ -140,9 +151,9 @@ func TestTupleHeaderGoldenLayout(t *testing.T) {
 	mustSet(t, "flags", ok, err)
 	ok, err = h.SetColumnCount(0x155)
 	mustSet(t, "col_count", ok, err)
-	h.SetHoff(14)
+	h.SetHoff(0xA5)
 
-	want := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04, 0xA9, 0x55, 0x0E, 0x00}
+	want := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04, 0xA9, 0x55, 0xA5, 0x00}
 	if got := h.data[:]; !bytes.Equal(got, want) {
 		t.Errorf("raw bytes = % x, want % x", got, want)
 	}

@@ -127,6 +127,13 @@ func TestSlotEntryRejectsOverflow(t *testing.T) {
 
 // Golden layout: a known triple must produce exactly these 4 bytes.
 //
+// The values are layout probes: non-zero (so "never written" is distinguishable
+// from "written correctly"), distinct, and asymmetric (so a reversed byte order
+// shows up). flag is 0b10 rather than 0 or 0b11 specifically so that its two
+// bits differ — with an all-zero or all-one flag, swapping the two bits would
+// be invisible. Expected bytes are hard-coded, never recomputed from the same
+// shifts the implementation uses.
+//
 //	offset = 0x1234 -> << 17 = 0x2468_0000
 //	length = 0x0ABC -> <<  2 = 0x0000_2AF0
 //	flag   = 0x2    -> <<  0 = 0x0000_0002

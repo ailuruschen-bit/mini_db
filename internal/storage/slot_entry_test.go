@@ -12,8 +12,8 @@ import (
 type entryField struct {
 	name  string
 	width uint
-	set   func(s *SlotEntry, v uint32) (bool, error)
-	get   func(s *SlotEntry) uint32
+	set   func(s SlotEntry, v uint32) (bool, error)
+	get   func(s SlotEntry) uint32
 }
 
 func (f entryField) max() uint32 { return (1 << f.width) - 1 }
@@ -21,14 +21,14 @@ func (f entryField) max() uint32 { return (1 << f.width) - 1 }
 func entryFields() []entryField {
 	return []entryField{
 		{"offset", 15,
-			func(s *SlotEntry, v uint32) (bool, error) { return s.SetOffset(uint16(v)) },
-			func(s *SlotEntry) uint32 { return uint32(s.Offset()) }},
+			func(s SlotEntry, v uint32) (bool, error) { return s.SetOffset(uint16(v)) },
+			func(s SlotEntry) uint32 { return uint32(s.Offset()) }},
 		{"length", 15,
-			func(s *SlotEntry, v uint32) (bool, error) { return s.SetLength(uint16(v)) },
-			func(s *SlotEntry) uint32 { return uint32(s.Length()) }},
+			func(s SlotEntry, v uint32) (bool, error) { return s.SetLength(uint16(v)) },
+			func(s SlotEntry) uint32 { return uint32(s.Length()) }},
 		{"flag", 2,
-			func(s *SlotEntry, v uint32) (bool, error) { return s.SetFlag(byte(v)) },
-			func(s *SlotEntry) uint32 { return uint32(s.Flag()) }},
+			func(s SlotEntry, v uint32) (bool, error) { return s.SetFlag(byte(v)) },
+			func(s SlotEntry) uint32 { return uint32(s.Flag()) }},
 	}
 }
 

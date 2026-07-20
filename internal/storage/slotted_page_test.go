@@ -44,7 +44,7 @@ func TestHeaderAliasesBackingArray(t *testing.T) {
 
 // The slot directory spans [HeaderSize, pd_upper), so pd_upper alone decides
 // how many entries exist. An untouched page (pd_upper == HeaderSize) has none.
-func TestSlotDirectoryCount(t *testing.T) {
+func TestSlotCount(t *testing.T) {
 	tests := []struct {
 		name string
 		n    uint16
@@ -58,44 +58,112 @@ func TestSlotDirectoryCount(t *testing.T) {
 			p := blankPage()
 			p.Header().SetPdUpper(HeaderSize + tt.n*SlotEntrySize)
 
-			if got := len(p.SlotDirectory()); got != int(tt.n) {
+			if got := p.SlotCount(); got != tt.n {
 				t.Errorf("got %d entries, want %d", got, tt.n)
 			}
 		})
 	}
 }
 
-// Entry i must map to the slot at HeaderSize+i*SlotEntrySize, and writing
-// through a returned entry must reach the page — the returned SlotEntry values
-// are copies, but each carries a pointer into the backing array.
-func TestSlotDirectoryEntriesMapToTheirSlots(t *testing.T) {
+// Slot i must map to the 4-byte window at HeaderSize+i*SlotEntrySize, and
+// writing through the returned entry must reach the page — the entry is a copy
+// but carries a pointer into the backing array.
+func TestSlotEntryAtMapsToItsSlot(t *testing.T) {
 	const n = 4
 	p := blankPage()
 	p.Header().SetPdUpper(HeaderSize + n*SlotEntrySize)
 
-	dir := p.SlotDirectory()
-	if len(dir) != n {
-		t.Fatalf("got %d entries, want %d", len(dir), n)
-	}
-	for i := range dir {
-		ok, err := dir[i].SetOffset(uint16(1000 + i))
+	for i := uint16(0); i < n; i++ {
+		ok, err := p.SlotEntryAt(i).SetOffset(1000 + i)
 		mustSet(t, "offset", ok, err)
 	}
 
-	// A freshly built directory must observe those writes, in the same order.
-	for i, e := range p.SlotDirectory() {
-		if got, want := e.Offset(), uint16(1000+i); got != want {
+	// Freshly obtained entries must observe those writes.
+	for i := uint16(0); i < n; i++ {
+		if got, want := p.SlotEntryAt(i).Offset(), 1000+i; got != want {
 			t.Errorf("slot %d: offset = %d, want %d", i, got, want)
 		}
 	}
 
-	// And each entry must sit at its own 4-byte window in the page.
+	// And each entry must sit at its own window in the page.
 	for i := 0; i < n; i++ {
 		at := int(HeaderSize) + i*int(SlotEntrySize)
 		word := binary.BigEndian.Uint32(p.data[at : at+int(SlotEntrySize)])
 		if got, want := uint16(word>>17), uint16(1000+i); got != want {
 			t.Errorf("slot %d at byte %d: offset = %d, want %d", i, at, got, want)
 		}
+	}
+}
+
+// Asking for a slot the directory does not have is a programming error, not a
+// silent read of free space.
+func TestSlotEntryAtPanicsOutOfRange(t *testing.T) {
+	p := blankPage()
+	p.Header().SetPdUpper(HeaderSize + 2*SlotEntrySize)
+
+	defer func() {
+		if recover() == nil {
+			t.Error("SlotEntryAt(2) on a 2-slot page did not panic")
+		}
+	}()
+	_ = p.SlotEntryAt(2)
+}
+
+// Slots must yield every entry in order, and must support early exit.
+func TestSlotsIteration(t *testing.T) {
+	const n = 5
+	p := blankPage()
+	p.Header().SetPdUpper(HeaderSize + n*SlotEntrySize)
+	for i := uint16(0); i < n; i++ {
+		ok, err := p.SlotEntryAt(i).SetOffset(1000 + i)
+		mustSet(t, "offset", ok, err)
+	}
+
+	var seen []uint16
+	for i, e := range p.Slots() {
+		if got, want := e.Offset(), 1000+i; got != want {
+			t.Errorf("slot %d: offset = %d, want %d", i, got, want)
+		}
+		seen = append(seen, i)
+	}
+	if len(seen) != n {
+		t.Errorf("iterated %d slots, want %d", len(seen), n)
+	}
+	for i, idx := range seen {
+		if idx != uint16(i) {
+			t.Errorf("slots yielded out of order: %v", seen)
+			break
+		}
+	}
+
+	// `break` must stop the iteration.
+	count := 0
+	for range p.Slots() {
+		count++
+		break
+	}
+	if count != 1 {
+		t.Errorf("break did not stop iteration: ran %d times", count)
+	}
+}
+
+// Indexed access and iteration are the allocation-free path; that property is
+// the whole reason they exist, so lock it in.
+func TestSlotAccessDoesNotAllocate(t *testing.T) {
+	p := blankPage()
+	p.Header().SetPdUpper(HeaderSize + 100*SlotEntrySize)
+
+	if got := testing.AllocsPerRun(100, func() {
+		_ = p.SlotEntryAt(50)
+	}); got != 0 {
+		t.Errorf("SlotEntryAt allocated %v times per run, want 0", got)
+	}
+
+	if got := testing.AllocsPerRun(100, func() {
+		for range p.Slots() {
+		}
+	}); got != 0 {
+		t.Errorf("Slots allocated %v times per run, want 0", got)
 	}
 }
 

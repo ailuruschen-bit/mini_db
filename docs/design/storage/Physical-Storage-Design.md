@@ -23,7 +23,9 @@ These map one-to-one to the constants in `internal/storage/slotted_page.go`.
 
 ## 2. Page Layout
 
-The standard page size is **8,192 bytes (8 KB)**. The slot directory grows downward from just after the header, while tuple data grows upward from the end of the page; the gap between them (`pd_lower` … `pd_upper`) is the free space.
+The standard page size is **8,192 bytes (8 KB)**. The slot directory grows downward from just after the header, while tuple data grows upward from the end of the page; the gap between them (`pd_upper` … `pd_lower`) is the free space.
+
+> **Naming note.** `pd_lower` / `pd_upper` are named after the page as drawn top-down, **not** after address values (this differs from PostgreSQL). `pd_upper` is the *low* address bounding the slot directory; `pd_lower` is the *high* address where tuple data begins. So `pd_upper < pd_lower` always.
 
 ![Slotted page layout](assets/Slotted-Page.png)
 
@@ -38,8 +40,8 @@ All multi-byte fields are **big-endian**.
 | 0      | 8      | `pd_lsn`       | Log Sequence Number — identifies the WAL record that last changed the page. |
 | 8      | 2      | `pd_checksum`  | Checksum for write-time integrity verification.                    |
 | 10     | 2      | `pd_flags`     | Page status flags (has free space, is index page, etc.).           |
-| 12     | 2      | `pd_lower`     | **Free space start** — end of the slot directory (offset where the next slot is appended). |
-| 14     | 2      | `pd_upper`     | **Free space end** — start of the tuple data area.                 |
+| 12     | 2      | `pd_lower`     | **Bottom of free space** — start of the tuple data area (offset where the next tuple ends up). Decreases as tuples are added. |
+| 14     | 2      | `pd_upper`     | **Top of free space** — end of the slot directory (offset where the next slot is appended). Increases as slots are added. |
 | 16     | 2      | `pd_special`   | Special space — used by indexes (e.g. B-Tree sibling pointers).    |
 | 18     | 2      | `pd_pagesize`  | Page size and layout version identifier.                           |
 | 20     | 4      | `pd_prune_xid` | Oldest transaction id whose dead tuples may be pruned (VACUUM).     |
@@ -48,7 +50,7 @@ All multi-byte fields are **big-endian**.
 
 ## 4. Slot Directory & Slot Entry (4 bytes each)
 
-The slot directory is an array of fixed 4-byte **slot entries** occupying `[HeaderSize, pd_lower)`. Each entry acts as an indirection: the slot number (ID) stays stable even when the physical tuple moves within the page.
+The slot directory is an array of fixed 4-byte **slot entries** occupying `[HeaderSize, pd_upper)`. Each entry acts as an indirection: the slot number (ID) stays stable even when the physical tuple moves within the page.
 
 ### Slot Entry bit layout (32 bits, big-endian)
 
@@ -133,7 +135,7 @@ The defining trait of the slotted page is that its two regions grow **toward eac
 
 1. **Slot Directory** grows downward from just after the header. Each 4-byte entry records where a tuple lives (`Offset`) and its `Length`. Because the slot number is stable, the tuple can be relocated within the page without invalidating references to it.
 2. **Tuple Data** grows upward from the end of the page.
-3. **Free Space** is the gap between `pd_lower` (end of slot directory) and `pd_upper` (start of tuple data). The page is considered **full** once `pd_lower + SlotEntrySize > pd_upper` (no room for another slot + tuple).
+3. **Free Space** is the gap between `pd_upper` (end of slot directory) and `pd_lower` (start of tuple data). The page is considered **full** once `pd_upper + SlotEntrySize > pd_lower` (no room for another slot + tuple).
 
 ---
 

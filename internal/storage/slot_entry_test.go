@@ -6,12 +6,12 @@ import (
 )
 
 // entryField describes one bit-packed field of the 4-byte slot entry.
-// The 32-bit word is laid out as: offset(15) | length(15) | flags(2), so each
-// field is identified by its width and its shift within that word.
+// The 32-bit word is laid out as offset(15) | length(15) | flags(2); a field's
+// width is all the descriptor needs, since each field's bit position is pinned
+// by TestSlotEntryGoldenLayout rather than recomputed here.
 type entryField struct {
 	name  string
 	width uint
-	shift uint
 	set   func(s *SlotEntry, v uint32) (bool, error)
 	get   func(s *SlotEntry) uint32
 }
@@ -20,13 +20,13 @@ func (f entryField) max() uint32 { return (1 << f.width) - 1 }
 
 func entryFields() []entryField {
 	return []entryField{
-		{"offset", 15, 17,
+		{"offset", 15,
 			func(s *SlotEntry, v uint32) (bool, error) { return s.SetOffset(uint16(v)) },
 			func(s *SlotEntry) uint32 { return uint32(s.Offset()) }},
-		{"length", 15, 2,
+		{"length", 15,
 			func(s *SlotEntry, v uint32) (bool, error) { return s.SetLength(uint16(v)) },
 			func(s *SlotEntry) uint32 { return uint32(s.Length()) }},
-		{"flag", 2, 0,
+		{"flag", 2,
 			func(s *SlotEntry, v uint32) (bool, error) { return s.SetFlag(byte(v)) },
 			func(s *SlotEntry) uint32 { return uint32(s.Flag()) }},
 	}

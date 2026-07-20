@@ -48,7 +48,9 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 
 - [ ] **`NewSlottedPage` value semantics:** mutating the input array after construction does not affect the page.
 - [ ] **Zero-copy alias invariant:** a write through `Header()` / a `SlotEntry` is visible via a freshly obtained view and in the raw `data`.
-- [ ] **SlotDirectory:** N entries when `pd_upper` implies N; `0` when `pd_upper == HeaderSize` (empty page); a setter on a returned entry writes back to the page.
+- [ ] **SlotCount:** N when `pd_upper` implies N; `0` when `pd_upper == HeaderSize` (empty page).
+- [ ] **SlotEntryAt:** slot i maps to the window at `HeaderSize+i*SlotEntrySize`; a setter on the returned entry writes back to the page; an out-of-range index panics.
+- [ ] **Slots:** yields every entry in order, honours early `break`, and allocates nothing (locked in with `testing.AllocsPerRun`).
 - [ ] **LocateTupleByEntry:** returned slice covers exactly `[offset, offset+length)`.
 
 ## 5. Round-trip fidelity (`storage_roundtrip_test.go`, black-box `storage_test`)
@@ -63,6 +65,6 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 2. PageHeader — establish the table-driven + golden pattern.
 3. SlotEntry — bit packing, independence, error paths.
 4. TupleHeader — 12-byte packed layout.
-5. SlottedPage assembly — value semantics, alias, SlotDirectory, LocateTupleByEntry.
+5. SlottedPage assembly — value semantics, alias, slot access, LocateTupleByEntry.
 6. Round-trip (black-box).
 7. Wrap up: `go test -cover`, `go vet`, commit as `test(storage): ...`.

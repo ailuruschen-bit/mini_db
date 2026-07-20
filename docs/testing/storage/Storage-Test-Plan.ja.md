@@ -48,7 +48,9 @@
 
 - [ ] **`NewSlottedPage` の値セマンティクス:** 構築後に入力配列を変更してもページに影響しない。
 - [ ] **ゼロコピーの別名不変条件:** `Header()` / `SlotEntry` 経由の書き込みが、新たに取得したビューと生 `data` の両方で見える。
-- [ ] **SlotDirectory:** `pd_upper` が N を示すとき N 個; `pd_upper == HeaderSize`（空ページ）のとき `0` 個; 返された entry への setter がページに書き戻される。
+- [ ] **SlotCount:** `pd_upper` が N を示すとき N; `pd_upper == HeaderSize`（空ページ）のとき `0`。
+- [ ] **SlotEntryAt:** スロット i が `HeaderSize+i*SlotEntrySize` の窓に対応する; 返された entry への setter がページに書き戻される; 範囲外の添字は panic する。
+- [ ] **Slots:** すべての entry を順に yield し、早期 `break` を尊重し、一切アロケートしない（`testing.AllocsPerRun` で固定）。
 - [ ] **LocateTupleByEntry:** 返されたスライスが `[offset, offset+length)` を正確に覆う。
 
 ## 5. 往復忠実性（`storage_roundtrip_test.go`、ブラックボックス `storage_test`）
@@ -63,6 +65,6 @@
 2. PageHeader — テーブル駆動 + ゴールデンのパターンを確立。
 3. SlotEntry — ビットパック、独立性、エラーパス。
 4. TupleHeader — 12 バイトのパックレイアウト。
-5. SlottedPage 組み立て — 値セマンティクス、別名、SlotDirectory、LocateTupleByEntry。
+5. SlottedPage 組み立て — 値セマンティクス、別名、スロットアクセス、LocateTupleByEntry。
 6. 往復（ブラックボックス）。
 7. 仕上げ: `go test -cover`、`go vet`、`test(storage): ...` でコミット。

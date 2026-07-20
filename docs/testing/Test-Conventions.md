@@ -58,7 +58,7 @@ For any type mapped onto raw bytes, hard-code the expected raw bytes and compare
 ### 4.3 What every byte-mapped type must cover
 
 - **Round-trip**: `set` then `get` returns the same value.
-- **Field independence**: writing one field must not corrupt adjacent fields (critical for bit-packed types).
+- **Field independence**: writing one field must not corrupt adjacent fields (critical for bit-packed types). Run this from **both a zero and an all-max background** — a stray write is only visible when it differs from the background, so a zero background alone is blind to strays that write 0-bits, and a max background alone is blind to strays that write 1-bits. The max background additionally proves a setter really clears bits instead of only OR-ing them in.
 - **Boundary values**: `0`, the field maximum, and one-past-maximum.
 - **Error path**: sub-width setters must reject out-of-range input.
 

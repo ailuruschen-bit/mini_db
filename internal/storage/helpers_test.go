@@ -9,6 +9,13 @@ func blankPage() *SlottedPage {
 	return NewSlottedPage([PageSize]byte{})
 }
 
+// blankSlotEntry returns a standalone, zero-filled slot entry. Bit-packing can
+// be exercised without building a whole page around it.
+func blankSlotEntry() *SlotEntry {
+	var buf [SlotEntrySize]byte
+	return &SlotEntry{&buf}
+}
+
 // beBytes returns the big-endian encoding of v kept to its low `size` bytes.
 // Used by golden-layout tests to compute the expected raw bytes of a field.
 func beBytes(v uint64, size int) []byte {

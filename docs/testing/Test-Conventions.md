@@ -53,7 +53,16 @@ for _, tt := range tests {
 
 ### 4.2 Golden byte-layout assertions
 
-For any type mapped onto raw bytes, hard-code the expected raw bytes and compare against them. This is the only way to catch a wrong offset or wrong byte order — getter/setter pairs that share the same wrong offset would still agree with each other.
+For any type mapped onto raw bytes, hard-code the expected raw bytes and compare against them. This is the only way to catch a wrong offset or wrong byte order — getter/setter pairs that share the same wrong offset would still agree with each other. Never recompute the expectation from the same shifts the implementation uses: a formula copied from the code moves in lockstep with a bug in it. Derive the bytes by hand and record the derivation in a comment.
+
+Choose probe values deliberately — they are not arbitrary. Each field's value should be:
+
+- **non-zero**, so "written correctly" is distinguishable from "never written";
+- **distinct** from every other field, so a swapped pair is detectable;
+- **asymmetric** under byte reversal, so a wrong byte order shows up (`0x1111` would hide it);
+- **neither 0 nor the field maximum** for bit-packed fields, and ideally an **alternating bit pattern** — an all-zero or all-one field hides a mask that is off by one bit. For a 2-bit field, `0b10` beats `0b00` and `0b11` because its two bits differ.
+
+A byte ladder such as `0x01020304` is a good probe for multi-byte fields: any reordering or off-by-one shift is visible at a glance. Treat these values as layout probes, not as a semantically valid record — do not try to make the combination meaningful.
 
 ### 4.3 What every byte-mapped type must cover
 

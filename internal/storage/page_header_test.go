@@ -80,26 +80,51 @@ func TestPageHeaderGoldenLayout(t *testing.T) {
 	}
 }
 
-// Field isolation: fill every field with its max marker, zero one, and verify
-// no neighbour changed. Detects overlapping / off-by-one offsets.
+// Field isolation: fill every field with a marker, write the opposite value
+// into one of them, and verify no neighbour changed. Detects overlapping /
+// off-by-one offsets.
+//
+// Both directions are run because a stray write is only visible when it differs
+// from the background, so each direction is blind to what the other catches:
+//   - zero background: catches a setter that strays 1-bits into a neighbour
+//   - max background:  catches a setter that strays 0-bits into a neighbour,
+//     and additionally proves the setter really clears bits rather than only
+//     OR-ing them in (critical for the bit-packed types).
 func TestPageHeaderFieldIsolation(t *testing.T) {
 	fields := headerFields()
-	for _, target := range fields {
-		t.Run(target.name, func(t *testing.T) {
-			h := blankPage().Header()
-			for _, f := range fields {
-				f.set(h, f.max)
-			}
-			target.set(h, 0)
-			for _, f := range fields {
-				want := f.max
-				if f.name == target.name {
-					want = 0
+
+	directions := []struct {
+		name string
+		bg   func(f headerField) uint64 // value every field is filled with
+		poke func(f headerField) uint64 // value then written into the target
+	}{
+		{"zero-background",
+			func(headerField) uint64 { return 0 },
+			func(f headerField) uint64 { return f.max }},
+		{"max-background",
+			func(f headerField) uint64 { return f.max },
+			func(headerField) uint64 { return 0 }},
+	}
+
+	for _, d := range directions {
+		for _, target := range fields {
+			t.Run(d.name+"/"+target.name, func(t *testing.T) {
+				h := blankPage().Header()
+				for _, f := range fields {
+					f.set(h, d.bg(f))
 				}
-				if got := f.get(h); got != want {
-					t.Errorf("after zeroing %s: field %s = %d, want %d", target.name, f.name, got, want)
+				target.set(h, d.poke(target))
+
+				for _, f := range fields {
+					want := d.bg(f)
+					if f.name == target.name {
+						want = d.poke(f)
+					}
+					if got := f.get(h); got != want {
+						t.Errorf("after writing %s: field %s = %d, want %d", target.name, f.name, got, want)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }

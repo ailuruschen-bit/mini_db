@@ -13,11 +13,16 @@ const (
 // === Slot Entry Define (4 byte) ===
 //
 // A SlotEntry is a view: it holds nothing but a pointer into a page's backing
-// array. Methods therefore take a value receiver — copying an entry is a
-// pointer copy, and every setter writes through to the page regardless. This
-// also lets callers chain off an entry returned by value, e.g.
-// p.SlotEntryAt(i).Offset(), which a pointer receiver would forbid because a
-// function result is not addressable.
+// array, so copying an entry copies that pointer and every setter still writes
+// through to the page.
+//
+// Methods use pointer receivers, matching the other view types in this package.
+// SlotEntryAt and Slots hand out entries by value (returning a pointer would
+// force a heap allocation per entry), so a caller must bind one to a variable
+// before calling a method on it — a function result is not addressable:
+//
+//	e := p.SlotEntryAt(i)
+//	e.Offset()
 type SlotEntry struct {
 	data *[SlotEntrySize]byte
 }
@@ -25,7 +30,7 @@ type SlotEntry struct {
 // --- All Entry Fields ---
 
 // Offset: point to specific slot top (15 bit)
-func (s SlotEntry) Offset() uint16 {
+func (s *SlotEntry) Offset() uint16 {
 	bitWindow := s.data[0:2]
 	windowVal := binary.BigEndian.Uint16(bitWindow)
 	// first 15bit
@@ -34,7 +39,7 @@ func (s SlotEntry) Offset() uint16 {
 	return val
 }
 
-func (s SlotEntry) SetOffset(val uint16) (bool, error) {
+func (s *SlotEntry) SetOffset(val uint16) (bool, error) {
 	if val > maxVal15 {
 		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
 	}
@@ -53,7 +58,7 @@ func (s SlotEntry) SetOffset(val uint16) (bool, error) {
 }
 
 // Length: byte length of the tuple this slot points to (15 bit)
-func (s SlotEntry) Length() uint16 {
+func (s *SlotEntry) Length() uint16 {
 	bitWindow := s.data[0:]
 	bitVal := binary.BigEndian.Uint32(bitWindow)
 	// from 16 to 30 in 32bit
@@ -63,7 +68,7 @@ func (s SlotEntry) Length() uint16 {
 	return val
 }
 
-func (s SlotEntry) SetLength(val uint16) (bool, error) {
+func (s *SlotEntry) SetLength(val uint16) (bool, error) {
 	if val > maxVal15 {
 		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
 	}
@@ -82,7 +87,7 @@ func (s SlotEntry) SetLength(val uint16) (bool, error) {
 }
 
 // Flag: the status of slot (2 bit)
-func (s SlotEntry) Flag() byte {
+func (s *SlotEntry) Flag() byte {
 	bitWindow := s.data[2:]
 	bitVal := binary.BigEndian.Uint16(bitWindow)
 	// last 2 bit
@@ -92,7 +97,7 @@ func (s SlotEntry) Flag() byte {
 	return val
 }
 
-func (s SlotEntry) SetFlag(val byte) (bool, error) {
+func (s *SlotEntry) SetFlag(val byte) (bool, error) {
 	if val > maxVal2 {
 		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal2)
 	}

@@ -82,7 +82,7 @@ func (p *SlottedPage) Slots() iter.Seq2[uint16, SlotEntry] {
 }
 
 // Find Tuple by the pointer val (from an Entry)
-func (p *SlottedPage) LocateTupleByEntry(entry SlotEntry) *Tuple {
+func (p *SlottedPage) LocateTupleByEntry(entry *SlotEntry) *Tuple {
 	return &Tuple{p.data[entry.Offset() : entry.Offset()+entry.Length()]}
 }
 

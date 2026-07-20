@@ -74,13 +74,15 @@ func TestSlotEntryAtMapsToItsSlot(t *testing.T) {
 	p.Header().SetPdUpper(HeaderSize + n*SlotEntrySize)
 
 	for i := uint16(0); i < n; i++ {
-		ok, err := p.SlotEntryAt(i).SetOffset(1000 + i)
+		e := p.SlotEntryAt(i)
+		ok, err := e.SetOffset(1000 + i)
 		mustSet(t, "offset", ok, err)
 	}
 
 	// Freshly obtained entries must observe those writes.
 	for i := uint16(0); i < n; i++ {
-		if got, want := p.SlotEntryAt(i).Offset(), 1000+i; got != want {
+		e := p.SlotEntryAt(i)
+		if got, want := e.Offset(), 1000+i; got != want {
 			t.Errorf("slot %d: offset = %d, want %d", i, got, want)
 		}
 	}
@@ -115,7 +117,8 @@ func TestSlotsIteration(t *testing.T) {
 	p := blankPage()
 	p.Header().SetPdUpper(HeaderSize + n*SlotEntrySize)
 	for i := uint16(0); i < n; i++ {
-		ok, err := p.SlotEntryAt(i).SetOffset(1000 + i)
+		e := p.SlotEntryAt(i)
+		ok, err := e.SetOffset(1000 + i)
 		mustSet(t, "offset", ok, err)
 	}
 
@@ -149,18 +152,25 @@ func TestSlotsIteration(t *testing.T) {
 
 // Indexed access and iteration are the allocation-free path; that property is
 // the whole reason they exist, so lock it in.
+//
+// The entries are read through pointer-receiver methods, so each call takes the
+// address of a local copy. That must stay on the stack — if the entry ever
+// escapes, iteration silently becomes one heap allocation per slot, which is
+// exactly the regression this test exists to catch.
 func TestSlotAccessDoesNotAllocate(t *testing.T) {
 	p := blankPage()
 	p.Header().SetPdUpper(HeaderSize + 100*SlotEntrySize)
 
 	if got := testing.AllocsPerRun(100, func() {
-		_ = p.SlotEntryAt(50)
+		e := p.SlotEntryAt(50)
+		_ = e.Offset()
 	}); got != 0 {
 		t.Errorf("SlotEntryAt allocated %v times per run, want 0", got)
 	}
 
 	if got := testing.AllocsPerRun(100, func() {
-		for range p.Slots() {
+		for _, e := range p.Slots() {
+			_ = e.Offset()
 		}
 	}); got != 0 {
 		t.Errorf("Slots allocated %v times per run, want 0", got)

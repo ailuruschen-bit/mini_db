@@ -11,9 +11,9 @@ func blankPage() *SlottedPage {
 
 // blankSlotEntry returns a standalone, zero-filled slot entry. Bit-packing can
 // be exercised without building a whole page around it.
-func blankSlotEntry() SlotEntry {
+func blankSlotEntry() *SlotEntry {
 	var buf [SlotEntrySize]byte
-	return SlotEntry{&buf}
+	return &SlotEntry{&buf}
 }
 
 // blankTupleHeader returns a standalone, zero-filled tuple header.

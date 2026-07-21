@@ -86,6 +86,16 @@ func (p *SlottedPage) LocateTupleByEntry(entry *SlotEntry) *Tuple {
 	return &Tuple{p.data[entry.Offset() : entry.Offset()+entry.Length()]}
 }
 
+// Bytes exposes the page's raw storage so it can be handed to the disk layer,
+// e.g. file.WriteAt(p.Bytes(), int64(pageID)*int64(PageSize)).
+//
+// It returns a view, not a copy: the slice aliases the page's backing array, so
+// writing through it mutates the page and bypasses every accessor in this
+// package. Use it for I/O, not as a general escape hatch.
+func (p *SlottedPage) Bytes() []byte {
+	return p.data[:]
+}
+
 // --- Tool Function ---
 func NewSlottedPage(data [PageSize]byte) *SlottedPage {
 	return &SlottedPage{data: data}

@@ -10,8 +10,11 @@ Test plan for the `internal/storage` package. The *how* (framework, table-driven
 
 ## 0. Shared helpers
 
-- [ ] `blankPage()` — a zeroed `*SlottedPage`.
-- [ ] `knownPage()` — a page pre-populated with known header / slot / tuple bytes.
+- [x] `blankPage()` — a zeroed `*SlottedPage`.
+- [x] `blankSlotEntry()` / `blankTupleHeader()` / `blankTuple(size)` — standalone zeroed views, so a component can be exercised without building a page around it.
+- [x] `beBytes(v, size)` — big-endian expectation builder for golden assertions.
+
+A pre-populated `knownPage()` helper turned out to be unnecessary: every test builds exactly the state it needs from `blankPage()`, which keeps each test readable on its own.
 
 ---
 
@@ -19,43 +22,43 @@ Test plan for the `internal/storage` package. The *how* (framework, table-driven
 
 Fields (big-endian): `pd_lsn[0:8]` `pd_checksum[8:10]` `pd_flags[10:12]` `pd_lower[12:14]` `pd_upper[14:16]` `pd_special[16:18]` `pd_pagesize[18:20]` `pd_prune_xid[20:24]`.
 
-- [ ] Round-trip: set then get returns the same value, every field.
-- [ ] Golden offset / endianness: after a set, the raw bytes at the field's range hold the big-endian encoding.
-- [ ] Field isolation: writing one field leaves adjacent fields unchanged.
-- [ ] Boundaries: `0` and the type maximum (u16 / u32 / u64).
+- [x] Round-trip: set then get returns the same value, every field.
+- [x] Golden offset / endianness: after a set, the raw bytes at the field's range hold the big-endian encoding.
+- [x] Field isolation: writing one field leaves adjacent fields unchanged.
+- [x] Boundaries: `0` and the type maximum (u16 / u32 / u64).
 
 ## 2. SlotEntry (`slot_entry_test.go`, white-box) — highest risk (4-byte bit packing)
 
 Layout: `Offset` (bits 31–17), `Length` (bits 16–2), `Flags` (bits 1–0).
 
-- [ ] Round-trip of `Offset` / `Length` / `Flag`.
-- [ ] **Bit-field independence:** set one field to all-ones, set another, verify the first is unchanged (all pairings).
-- [ ] Boundaries: `0`; max (`Offset`/`Length` = 32767, `Flag` = 3).
-- [ ] Error path: `SetOffset`/`SetLength` (> 32767) and `SetFlag` (> 3) return an error and do not write.
-- [ ] Golden: known offset/length/flag → expected 4 raw bytes.
+- [x] Round-trip of `Offset` / `Length` / `Flag`.
+- [x] **Bit-field independence:** set one field to all-ones, set another, verify the first is unchanged (all pairings).
+- [x] Boundaries: `0`; max (`Offset`/`Length` = 32767, `Flag` = 3).
+- [x] Error path: `SetOffset`/`SetLength` (> 32767) and `SetFlag` (> 3) return an error and do not write.
+- [x] Golden: known offset/length/flag → expected 4 raw bytes.
 
 ## 3. TupleHeader (`tuple_test.go`, white-box) — 12-byte layout
 
 Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hoff[10]` reserved `[11]`.
 
-- [ ] `TupleHeader()` returns a view over the first 12 bytes.
-- [ ] Round-trip + golden offsets for `TxMin` / `TxMax`.
-- [ ] `Flags` / `ColumnCount` packed independence (setting one preserves the other), boundaries (flags = 63, col_count = 1023), error path (> max).
-- [ ] `Hoff` round-trip; reserved byte `[11]` stays untouched by all setters.
-- [ ] `HasNull` reflects the `FlagHasNull` bit.
+- [x] `TupleHeader()` returns a view over the first 12 bytes.
+- [x] Round-trip + golden offsets for `TxMin` / `TxMax`.
+- [x] `Flags` / `ColumnCount` packed independence (setting one preserves the other), boundaries (flags = 63, col_count = 1023), error path (> max).
+- [x] `Hoff` round-trip; reserved byte `[11]` stays untouched by all setters.
+- [x] `HasNull` reflects the `FlagHasNull` bit.
 
 ## 4. SlottedPage assembly (`slotted_page_test.go`)
 
-- [ ] **`NewSlottedPage` value semantics:** mutating the input array after construction does not affect the page.
-- [ ] **Zero-copy alias invariant:** a write through `Header()` / a `SlotEntry` is visible via a freshly obtained view and in the raw `data`.
-- [ ] **SlotCount:** N when `pd_upper` implies N; `0` when `pd_upper == HeaderSize` (empty page).
-- [ ] **SlotEntryAt:** slot i maps to the window at `HeaderSize+i*SlotEntrySize`; a setter on the returned entry writes back to the page; an out-of-range index panics.
-- [ ] **Slots:** yields every entry in order, honours early `break`, and allocates nothing (locked in with `testing.AllocsPerRun`).
-- [ ] **LocateTupleByEntry:** returned slice covers exactly `[offset, offset+length)`.
+- [x] **`NewSlottedPage` value semantics:** mutating the input array after construction does not affect the page.
+- [x] **Zero-copy alias invariant:** a write through `Header()` / a `SlotEntry` is visible via a freshly obtained view and in the raw `data`.
+- [x] **SlotCount:** N when `pd_upper` implies N; `0` when `pd_upper == HeaderSize` (empty page).
+- [x] **SlotEntryAt:** slot i maps to the window at `HeaderSize+i*SlotEntrySize`; a setter on the returned entry writes back to the page; an out-of-range index panics.
+- [x] **Slots:** yields every entry in order, honours early `break`, and allocates nothing (locked in with `testing.AllocsPerRun`).
+- [x] **LocateTupleByEntry:** returned slice covers exactly `[offset, offset+length)`.
 
 ## 5. Round-trip fidelity (`storage_roundtrip_test.go`, black-box `storage_test`)
 
-- [ ] Assemble a page through the public API (header + slot + tuple) → take `data` → reconstruct via `NewSlottedPage` → every getter reads back the same value.
+- [x] Assemble a page through the public API (header + slot + tuple) → take `data` → reconstruct via `NewSlottedPage` → every getter reads back the same value.
 
 ---
 

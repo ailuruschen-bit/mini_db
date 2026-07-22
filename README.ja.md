@@ -33,7 +33,7 @@
 - [ ] SQL パーサー & `psql` 風 CLI
 - [ ] Python クライアントドライバ
 
-全体の目標設計は [docs/Project-Spec.md](docs/Project-Spec.md) に記載しています。上記の未チェック項目は **設計済みだが未実装** です。
+全体の目標設計は [docs/overview/Project-Spec.ja.md](docs/overview/Project-Spec.ja.md) に記載しています。上記の未チェック項目は **設計済みだが未実装** です。
 
 ## 設計のポイント
 
@@ -67,7 +67,7 @@
 
 ヘッダーやエントリは、基盤のページバッファを直接ラップする固定長配列ポインタ（`*[N]byte`）としてアクセスし、ビッグエンディアンの getter / setter で読み書きします——フィールドごとのコピーは発生しません。
 
-バイトレイアウトの詳細は [docs/Physical-Storage-Design.md](docs/Physical-Storage-Design.md) とページ配置図 [docs/graph/Slotted-Page.png](docs/graph/Slotted-Page.png) を参照してください。
+バイトレイアウトの詳細は [docs/design/storage/Physical-Storage-Design.ja.md](docs/design/storage/Physical-Storage-Design.ja.md) とページ配置図 [docs/design/storage/assets/Slotted-Page.png](docs/design/storage/assets/Slotted-Page.png) を参照してください。
 
 ## ディレクトリ構成
 
@@ -81,10 +81,10 @@
 │       ├── page_header.go    # 24B ページヘッダーのフィールド
 │       ├── slot_entry.go     # 4B スロットエントリ（ビットパッキング）
 │       └── tuple.go          # タプル / タプルヘッダーのレイアウト
-├── docs/                # 設計仕様・図
-│   ├── Project-Spec.md
-│   ├── Physical-Storage-Design.md
-│   └── graph/
+├── docs/                # ドキュメント（二言語: *.md / *.ja.md）
+│   ├── overview/        # プロジェクト要件・ロードマップ
+│   ├── design/          # モジュール別の設計仕様
+│   └── testing/         # テスト規約・計画
 └── go.mod
 ```
 

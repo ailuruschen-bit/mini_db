@@ -40,8 +40,15 @@ func (h *PageHeader) SetPdFlags(pd uint16) {
 	binary.BigEndian.PutUint16(h.data[10:12], pd)
 }
 
-/* pd_lower and pd_upper always point into the Free Space */
-// pd_lower: point to the bottom of free space ( ~ 8191)
+/*
+pd_lower and pd_upper bracket the Free Space. Note the naming follows the page
+drawn top-down (see docs/design/storage), NOT PostgreSQL's address-based naming:
+pd_upper is the LOW address (end of the slot directory) and pd_lower is the HIGH
+address (start of the tuple data area), so pd_upper < pd_lower.
+
+	[0,24) header | [24, pd_upper) slot directory | free space | [pd_lower, 8192) tuples
+*/
+// pd_lower: bottom of free space; start of the tuple data area, grows down toward pd_upper ( ~ 8191)
 func (h *PageHeader) PdLower() uint16 {
 	return binary.BigEndian.Uint16(h.data[12:14])
 }
@@ -50,7 +57,7 @@ func (h *PageHeader) SetPdLower(pd uint16) {
 	binary.BigEndian.PutUint16(h.data[12:14], pd)
 }
 
-// pd_upper: point to the top of free space (24 ~ )
+// pd_upper: top of free space; end of the slot directory, grows up toward pd_lower (24 ~ )
 func (h *PageHeader) PdUpper() uint16 {
 	return binary.BigEndian.Uint16(h.data[14:16])
 }

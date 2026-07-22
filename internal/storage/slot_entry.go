@@ -11,6 +11,18 @@ const (
 )
 
 // === Slot Entry Define (4 byte) ===
+//
+// A SlotEntry is a view: it holds nothing but a pointer into a page's backing
+// array, so copying an entry copies that pointer and every setter still writes
+// through to the page.
+//
+// Methods use pointer receivers, matching the other view types in this package.
+// SlotEntryAt and Slots hand out entries by value (returning a pointer would
+// force a heap allocation per entry), so a caller must bind one to a variable
+// before calling a method on it — a function result is not addressable:
+//
+//	e := p.SlotEntryAt(i)
+//	e.Offset()
 type SlotEntry struct {
 	data *[SlotEntrySize]byte
 }
@@ -45,7 +57,7 @@ func (s *SlotEntry) SetOffset(val uint16) (bool, error) {
 	return true, nil
 }
 
-// Length: the length of slot (15 bit)
+// Length: byte length of the tuple this slot points to (15 bit)
 func (s *SlotEntry) Length() uint16 {
 	bitWindow := s.data[0:]
 	bitVal := binary.BigEndian.Uint32(bitWindow)
@@ -87,7 +99,7 @@ func (s *SlotEntry) Flag() byte {
 
 func (s *SlotEntry) SetFlag(val byte) (bool, error) {
 	if val > maxVal2 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
+		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal2)
 	}
 
 	bitWindow := s.data[2:]

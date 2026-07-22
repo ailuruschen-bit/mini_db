@@ -1,6 +1,8 @@
 # minidb: A PostgreSQL-inspired Disk-Oriented Database Engine
 ## プロジェクト要件定義書 (Requirement Specification)
 
+> 言語: [English](Project-Spec.md) | **日本語**
+
 ---
 
 ### 1. プロジェクト概要 (Project Overview)

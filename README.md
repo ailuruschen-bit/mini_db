@@ -33,7 +33,7 @@ This is an in-progress project. The **storage engine layer is implemented**; the
 - [ ] SQL parser & `psql`-style CLI
 - [ ] Python client driver
 
-The full target design is described in [docs/Project-Spec.md](docs/Project-Spec.md). Unchecked items above are specified but **not yet implemented**.
+The full target design is described in [docs/overview/Project-Spec.md](docs/overview/Project-Spec.md). Unchecked items above are specified but **not yet implemented**.
 
 ## Design highlights
 
@@ -67,7 +67,7 @@ The 24-byte page header reserves PostgreSQL-style fields — `pd_lsn` (WAL), `pd
 
 Headers and entries are accessed as fixed-size array pointers (`*[N]byte`) that wrap the underlying page buffer directly, with big-endian getters/setters — no per-field copying.
 
-See [docs/Physical-Storage-Design.md](docs/Physical-Storage-Design.md) and the page-layout diagram in [docs/graph/Slotted-Page.png](docs/graph/Slotted-Page.png) for the full byte layout.
+See [docs/design/storage/Physical-Storage-Design.md](docs/design/storage/Physical-Storage-Design.md) and the page-layout diagram in [docs/design/storage/assets/Slotted-Page.png](docs/design/storage/assets/Slotted-Page.png) for the full byte layout.
 
 ## Project structure
 
@@ -81,10 +81,10 @@ See [docs/Physical-Storage-Design.md](docs/Physical-Storage-Design.md) and the p
 │       ├── page_header.go    # 24 B page header fields
 │       ├── slot_entry.go     # 4 B slot entry (bit-packed)
 │       └── tuple.go          # tuple & tuple header layout
-├── docs/                # design spec & diagrams
-│   ├── Project-Spec.md
-│   ├── Physical-Storage-Design.md
-│   └── graph/
+├── docs/                # documentation (bilingual: *.md / *.ja.md)
+│   ├── overview/        # project spec & roadmap
+│   ├── design/          # design specs, grouped by module
+│   └── testing/         # test conventions & plans
 └── go.mod
 ```
 

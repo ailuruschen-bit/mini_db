@@ -77,9 +77,9 @@ A byte ladder such as `0x01020304` is a good probe for multi-byte fields: any re
 
 ```bash
 go test ./...                          # all tests
-go test -v ./internal/storage/         # verbose, one line per case
-go test -run TestSlotEntry ./internal/storage/   # filter by name
-go test -cover ./internal/storage/     # coverage percentage
+go test -v ./internal/storage/...       # verbose, one line per case
+go test -run TestSlotEntry ./internal/storage/... # filter by name
+go test -cover ./internal/storage/...   # coverage percentage
 go test -race ./...                    # data-race detector (for concurrent code)
 ```
 

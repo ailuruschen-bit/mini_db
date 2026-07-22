@@ -2,7 +2,7 @@
 
 > Language: **English** | [日本語](Storage-Test-Plan.ja.md)
 
-Test plan for the `internal/storage` package. The *how* (framework, table-driven, golden assertions, the four must-cover items) is defined in [Test Conventions](../Test-Conventions.md); this document lists *what* to cover, per component.
+Test plan for the `internal/storage/page` package. The *how* (framework, table-driven, golden assertions, the four must-cover items) is defined in [Test Conventions](../Test-Conventions.md); this document lists *what* to cover, per component.
 
 **Out of scope:** disk file I/O (not implemented yet). The "external bytes → memory" path is covered as round-trip fidelity via `NewSlottedPage` + getters.
 
@@ -56,7 +56,7 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 - [x] **Slots:** yields every entry in order, honours early `break`, and allocates nothing (locked in with `testing.AllocsPerRun`).
 - [x] **LocateTupleByEntry:** returned slice covers exactly `[offset, offset+length)`.
 
-## 5. Round-trip fidelity (`storage_roundtrip_test.go`, black-box `storage_test`)
+## 5. Round-trip fidelity (`roundtrip_test.go`, black-box `page_test`)
 
 - [x] Assemble a page through the public API (header + slot + tuple) → take `data` → reconstruct via `NewSlottedPage` → every getter reads back the same value.
 

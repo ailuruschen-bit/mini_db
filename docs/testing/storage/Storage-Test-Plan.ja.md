@@ -2,7 +2,7 @@
 
 > 言語: [English](Storage-Test-Plan.md) | **日本語**
 
-`internal/storage` パッケージのテスト計画。*どう書くか*（フレームワーク、テーブル駆動、ゴールデン検証、必須 4 項目）は [テスト規約](../Test-Conventions.ja.md) で定義済み。本書はコンポーネントごとに *何をカバーするか* を列挙します。
+`internal/storage/page` パッケージのテスト計画。*どう書くか*（フレームワーク、テーブル駆動、ゴールデン検証、必須 4 項目）は [テスト規約](../Test-Conventions.ja.md) で定義済み。本書はコンポーネントごとに *何をカバーするか* を列挙します。
 
 **対象外:** ディスクファイル I/O（未実装）。「外部バイト → メモリ」の経路は `NewSlottedPage` + getter による往復（round-trip）忠実性として検証します。
 
@@ -56,7 +56,7 @@
 - [x] **Slots:** すべての entry を順に yield し、早期 `break` を尊重し、一切アロケートしない（`testing.AllocsPerRun` で固定）。
 - [x] **LocateTupleByEntry:** 返されたスライスが `[offset, offset+length)` を正確に覆う。
 
-## 5. 往復忠実性（`storage_roundtrip_test.go`、ブラックボックス `storage_test`）
+## 5. 往復忠実性（`roundtrip_test.go`、ブラックボックス `page_test`）
 
 - [x] 公開 API でページを組み立て（ヘッダー + スロット + タプル）→ `data` を取り出す → `NewSlottedPage` で再構築 → すべての getter が同じ値を読み戻す。
 

@@ -77,9 +77,9 @@ for _, tt := range tests {
 
 ```bash
 go test ./...                          # 全テスト
-go test -v ./internal/storage/         # 詳細出力（ケースごとに 1 行）
-go test -run TestSlotEntry ./internal/storage/   # 名前でフィルタ
-go test -cover ./internal/storage/     # カバレッジ率
+go test -v ./internal/storage/...       # 詳細出力（ケースごとに 1 行）
+go test -run TestSlotEntry ./internal/storage/... # 名前でフィルタ
+go test -cover ./internal/storage/...   # カバレッジ率
 go test -race ./...                    # データ競合検出（並行コード用）
 ```
 

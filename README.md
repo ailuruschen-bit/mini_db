@@ -76,11 +76,10 @@ See [docs/design/storage/Physical-Storage-Design.md](docs/design/storage/Physica
 ├── cmd/
 │   └── server/          # entry point (CLI / server — stub for now)
 ├── internal/
-│   └── storage/         # storage engine
-│       ├── slotted_page.go   # page: header + slot directory access
-│       ├── page_header.go    # 24 B page header fields
-│       ├── slot_entry.go     # 4 B slot entry (bit-packed)
-│       └── tuple.go          # tuple & tuple header layout
+│   ├── storage/         # storage engine
+│   │   ├── page/        # slotted-page format (header, slot entry, tuple)
+│   │   └── disk/        # disk manager: page I/O to the heap file
+│   └── util/            # low-level helpers (bit-offset read/write)
 ├── docs/                # documentation (bilingual: *.md / *.ja.md)
 │   ├── overview/        # project spec & roadmap
 │   ├── design/          # design specs, grouped by module

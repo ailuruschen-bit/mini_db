@@ -2,12 +2,24 @@ package storage
 
 import (
 	"encoding/binary"
-	"fmt"
+
+	"github.com/ailuruschen-bit/minidb/internal/util"
 )
 
+// Field maxima, kept as the single source of truth for each packed field's
+// upper bound. Production code no longer needs them (util.WriteBits validates
+// range), but the tests reference them as the field's documented maximum.
 const (
 	maxVal6  uint8  = (1 << 6) - 1
 	maxVal10 uint16 = (1 << 10) - 1
+)
+
+// Bit layout of flags + col_count, packed into bytes [8:10] of the header, as
+// (bit position, bit length) pairs counted MSB-first from the start of the
+// header: flags occupies the high 6 bits, col_count the low 10.
+const (
+	flagsBitPos, flagsBitLen       = 8 * 8, 6                      // high 6 bits of [8:10]
+	colCountBitPos, colCountBitLen = flagsBitPos + flagsBitLen, 10 // low 10 bits of [8:10]
 )
 
 // MVCC hint bits packed into the 6-bit flags field of the tuple header.
@@ -38,6 +50,9 @@ type TupleHeader struct {
 }
 
 // --- All Header Fields (Value Getter + Setter) ---
+//
+// Getters of packed fields ignore ReadBits' error: the position/length are
+// compile-time constants known to be in range, so it can never fail here.
 
 // t_xmin: id of the transaction that inserted the tuple (4 byte)
 func (h *TupleHeader) TxMin() uint32 {
@@ -59,20 +74,12 @@ func (h *TupleHeader) SetTxMax(xid uint32) {
 
 // Flags: MVCC hint bits (high 6 bit of [8:10])
 func (h *TupleHeader) Flags() uint8 {
-	return uint8(binary.BigEndian.Uint16(h.data[8:10]) >> 10)
+	v, _ := util.ReadBits(h.data[:], flagsBitPos, flagsBitLen)
+	return uint8(v)
 }
 
 func (h *TupleHeader) SetFlags(val uint8) (bool, error) {
-	if val > maxVal6 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal6)
-	}
-
-	bitWindow := h.data[8:10]
-	windowVal := binary.BigEndian.Uint16(bitWindow)
-	// keep low 10 bit (col_count), replace high 6 bit (flags)
-	windowVal = (windowVal & maxVal10) | (uint16(val) << 10)
-	binary.BigEndian.PutUint16(bitWindow, windowVal)
-	return true, nil
+	return util.WriteBits(h.data[:], flagsBitPos, flagsBitLen, uint16(val))
 }
 
 // HasNull reports whether a null bitmap follows the header.
@@ -82,20 +89,12 @@ func (h *TupleHeader) HasNull() bool {
 
 // ColumnCount: number of columns (low 10 bit of [8:10])
 func (h *TupleHeader) ColumnCount() uint16 {
-	return binary.BigEndian.Uint16(h.data[8:10]) & maxVal10
+	v, _ := util.ReadBits(h.data[:], colCountBitPos, colCountBitLen)
+	return v
 }
 
 func (h *TupleHeader) SetColumnCount(val uint16) (bool, error) {
-	if val > maxVal10 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal10)
-	}
-
-	bitWindow := h.data[8:10]
-	windowVal := binary.BigEndian.Uint16(bitWindow)
-	// keep high 6 bit (flags), replace low 10 bit (col_count)
-	windowVal = (windowVal &^ maxVal10) | val
-	binary.BigEndian.PutUint16(bitWindow, windowVal)
-	return true, nil
+	return util.WriteBits(h.data[:], colCountBitPos, colCountBitLen, val)
 }
 
 // Hoff (t_hoff): offset from tuple start to column data (1 byte)

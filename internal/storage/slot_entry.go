@@ -1,13 +1,16 @@
 package storage
 
 import (
-	"encoding/binary"
-	"fmt"
+	"github.com/ailuruschen-bit/minidb/internal/util"
 )
 
+// Bit layout of the 4-byte slot entry, as (bit position, bit length) pairs
+// counted MSB-first from the start of the entry. Laid out contiguously:
+// offset [0,15) | length [15,30) | flag [30,32).
 const (
-	maxVal15 uint16 = (1 << 15) - 1
-	maxVal2  byte   = (1 << 2) - 1
+	offsetBitPos, offsetBitLen = 0, 15
+	lengthBitPos, lengthBitLen = offsetBitPos + offsetBitLen, 15
+	flagBitPos, flagBitLen     = lengthBitPos + lengthBitLen, 2
 )
 
 // === Slot Entry Define (4 byte) ===
@@ -28,89 +31,38 @@ type SlotEntry struct {
 }
 
 // --- All Entry Fields ---
+//
+// Getters ignore ReadBits' error: the position/length are compile-time
+// constants known to be in range, so it can never fail here.
 
-// Offset: point to specific slot top (15 bit)
+// Offset: points to the start of the tuple within the page (15 bit).
 func (s *SlotEntry) Offset() uint16 {
-	bitWindow := s.data[0:2]
-	windowVal := binary.BigEndian.Uint16(bitWindow)
-	// first 15bit
-	val := windowVal >> 1
-
-	return val
+	v, _ := util.ReadBits(s.data[:], offsetBitPos, offsetBitLen)
+	return v
 }
 
 func (s *SlotEntry) SetOffset(val uint16) (bool, error) {
-	if val > maxVal15 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
-	}
-
-	bitWindow := s.data[0:2]
-	windowVal := binary.BigEndian.Uint16(bitWindow)
-	// set first 15bit to 0
-	mask := uint16(1)
-	windowVal = windowVal & mask
-	// merge new value to first 15bit
-	merge := val << 1
-	windowVal = windowVal | merge
-	// write into []byte
-	binary.BigEndian.PutUint16(bitWindow, windowVal)
-	return true, nil
+	return util.WriteBits(s.data[:], offsetBitPos, offsetBitLen, val)
 }
 
-// Length: byte length of the tuple this slot points to (15 bit)
+// Length: byte length of the tuple this slot points to (15 bit).
 func (s *SlotEntry) Length() uint16 {
-	bitWindow := s.data[0:]
-	bitVal := binary.BigEndian.Uint32(bitWindow)
-	// from 16 to 30 in 32bit
-	mask := uint32(((1 << 15) - 1) << 2)
-	val := uint16((bitVal & mask) >> 2)
-
-	return val
+	v, _ := util.ReadBits(s.data[:], lengthBitPos, lengthBitLen)
+	return v
 }
 
 func (s *SlotEntry) SetLength(val uint16) (bool, error) {
-	if val > maxVal15 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal15)
-	}
-
-	bitWindow := s.data[0:]
-	windowVal := binary.BigEndian.Uint32(bitWindow)
-	// set first 16 ~ 30 bit to 0
-	mask := uint32(maxVal15) << 2
-	windowVal = windowVal &^ mask
-	// merge new value to 16 ~ 30 bit
-	merge := uint32(val) << 2
-	windowVal = windowVal | merge
-	// write into []byte
-	binary.BigEndian.PutUint32(bitWindow, windowVal)
-	return true, nil
+	return util.WriteBits(s.data[:], lengthBitPos, lengthBitLen, val)
 }
 
-// Flag: the status of slot (2 bit)
+// Flag: the status of the slot (2 bit).
 func (s *SlotEntry) Flag() byte {
-	bitWindow := s.data[2:]
-	bitVal := binary.BigEndian.Uint16(bitWindow)
-	// last 2 bit
-	mask := uint16((1 << 2) - 1)
-	val := byte(bitVal & mask)
-
-	return val
+	v, _ := util.ReadBits(s.data[:], flagBitPos, flagBitLen)
+	return byte(v)
 }
 
 func (s *SlotEntry) SetFlag(val byte) (bool, error) {
-	if val > maxVal2 {
-		return false, fmt.Errorf("value exceeds maximum allowed (%d)", maxVal2)
-	}
-
-	bitWindow := s.data[2:]
-	windowVal := binary.BigEndian.Uint16(bitWindow)
-	// set last 2 bit to 0
-	windowVal = windowVal &^ uint16(maxVal2)
-	// merge
-	windowVal = windowVal | uint16(val)
-	// write into []byte
-	binary.BigEndian.PutUint16(bitWindow, windowVal)
-	return true, nil
+	return util.WriteBits(s.data[:], flagBitPos, flagBitLen, uint16(val))
 }
 
 // --- Tool Functions ---

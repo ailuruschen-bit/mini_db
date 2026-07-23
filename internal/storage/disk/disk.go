@@ -7,6 +7,7 @@ package disk
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sync"
 
@@ -72,4 +73,38 @@ func (d *DiskManager) NumPages() PageID {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.numPages
+}
+
+// AllocatePage extends the file by one zero-filled page and returns its id.
+// It is the only operation that grows the file; WritePage can only overwrite a
+// page that has already been allocated.
+//
+// The whole read-modify-write runs under the lock. Two concurrent calls must
+// not hand out the same id, and the page's bytes must reach the file *before*
+// numPages advertises it, so that a concurrent reader can always rely on
+// "id < numPages implies the page exists and is readable". Hence the write
+// comes first and the counter is bumped only once it succeeded — a failed
+// write leaves numPages untouched rather than inventing a phantom page.
+//
+// The page is not flushed to disk; call Sync when durability is required.
+func (d *DiskManager) AllocatePage() (PageID, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Read the field directly: NumPages would take the same non-reentrant lock.
+	if d.numPages == math.MaxUint32 {
+		return 0, fmt.Errorf("disk: page limit reached (%d pages)", d.numPages)
+	}
+
+	id := d.numPages
+	offset := int64(id) * int64(page.PageSize)
+
+	// Zeroed explicitly rather than by extending with Truncate, so a freshly
+	// allocated page has predictable contents instead of a sparse hole.
+	if _, err := d.file.WriteAt(make([]byte, page.PageSize), offset); err != nil {
+		return 0, fmt.Errorf("disk: extend to page %d: %w", id, err)
+	}
+	d.numPages++
+
+	return id, nil
 }

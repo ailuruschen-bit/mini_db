@@ -527,3 +527,39 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		t.Errorf("file size = %d, want %d", got, want)
 	}
 }
+
+// --- Sync ---
+
+// Sync returns without error after writes on a healthy file.
+//
+// A unit test cannot verify the durability guarantee itself — that a synced
+// page survives a power loss — because it cannot pull the plug. It checks the
+// observable contract: the flush runs, and errors propagate.
+func TestSync(t *testing.T) {
+	d := mustOpen(t, tempDBPath(t))
+
+	id, err := d.AllocatePage()
+	if err != nil {
+		t.Fatalf("AllocatePage: %v", err)
+	}
+	if err := d.WritePage(id, filledPage(0xEE)); err != nil {
+		t.Fatalf("WritePage: %v", err)
+	}
+	if err := d.Sync(); err != nil {
+		t.Errorf("Sync: %v", err)
+	}
+}
+
+// Sync on a closed file reports an error rather than silently succeeding.
+func TestSyncOnClosedFile(t *testing.T) {
+	d, err := disk.Open(tempDBPath(t))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := d.Sync(); err == nil {
+		t.Error("Sync on a closed file did not fail")
+	}
+}

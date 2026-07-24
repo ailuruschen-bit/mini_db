@@ -117,6 +117,17 @@ func (d *DiskManager) WritePage(id PageID, src []byte) error {
 	return nil
 }
 
+// Sync flushes all pending writes for the file to the physical storage device
+// (fsync). Until it returns, a write reported as successful may still live only
+// in the OS page cache and would be lost on a crash. It is deliberately
+// separate from WritePage/AllocatePage: fsync is slow, so the caller decides
+// when durability is worth the cost (e.g. at a commit or checkpoint).
+//
+// It touches no shared counter state, so it needs no lock.
+func (d *DiskManager) Sync() error {
+	return d.file.Sync()
+}
+
 // NumPages reports how many pages the file currently holds. Valid page ids are
 // [0, NumPages).
 func (d *DiskManager) NumPages() PageID {

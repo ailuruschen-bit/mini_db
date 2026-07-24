@@ -67,6 +67,56 @@ func (d *DiskManager) Close() error {
 	return d.file.Close()
 }
 
+// ReadPage reads page id into dst, which must be exactly one page long — ReadAt
+// transfers len(dst) bytes, so a short or long buffer would read a partial page
+// or spill into the next one.
+//
+// Only the page-count check is done under the lock; the positioned read itself
+// runs lock-free, since ReadAt on distinct pages is safe at the OS level and
+// holding the lock across I/O would serialise every access.
+func (d *DiskManager) ReadPage(id PageID, dst []byte) error {
+	if len(dst) != int(page.PageSize) {
+		return fmt.Errorf("disk: read buffer is %d bytes, want %d", len(dst), page.PageSize)
+	}
+
+	d.mu.Lock()
+	n := d.numPages
+	d.mu.Unlock()
+	if id >= n {
+		return fmt.Errorf("disk: read page %d out of range [0,%d)", id, n)
+	}
+
+	// ReadAt returns a non-nil error unless it fills dst completely, so a short
+	// read (e.g. a file truncated behind our back) is reported, not silent.
+	if _, err := d.file.ReadAt(dst, int64(id)*int64(page.PageSize)); err != nil {
+		return fmt.Errorf("disk: read page %d: %w", id, err)
+	}
+	return nil
+}
+
+// WritePage writes src, which must be exactly one page long, over page id. The
+// page must already have been allocated; WritePage never grows the file — use
+// AllocatePage for that. The lock and I/O split mirrors ReadPage.
+//
+// The write is not flushed to disk; call Sync when durability is required.
+func (d *DiskManager) WritePage(id PageID, src []byte) error {
+	if len(src) != int(page.PageSize) {
+		return fmt.Errorf("disk: write buffer is %d bytes, want %d", len(src), page.PageSize)
+	}
+
+	d.mu.Lock()
+	n := d.numPages
+	d.mu.Unlock()
+	if id >= n {
+		return fmt.Errorf("disk: write page %d out of range [0,%d)", id, n)
+	}
+
+	if _, err := d.file.WriteAt(src, int64(id)*int64(page.PageSize)); err != nil {
+		return fmt.Errorf("disk: write page %d: %w", id, err)
+	}
+	return nil
+}
+
 // NumPages reports how many pages the file currently holds. Valid page ids are
 // [0, NumPages).
 func (d *DiskManager) NumPages() PageID {

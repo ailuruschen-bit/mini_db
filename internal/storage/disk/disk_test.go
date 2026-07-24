@@ -2,6 +2,7 @@ package disk_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,6 +35,16 @@ func fileSize(t *testing.T, path string) int64 {
 		t.Fatalf("stat: %v", err)
 	}
 	return info.Size()
+}
+
+// filledPage returns a fresh one-page buffer with every byte set to b, so a
+// page's contents are predictable and distinguishable from its neighbours.
+func filledPage(b byte) []byte {
+	buf := make([]byte, page.PageSize)
+	for i := range buf {
+		buf[i] = b
+	}
+	return buf
 }
 
 // mustOpen opens a manager and registers its cleanup.
@@ -294,5 +305,225 @@ func TestAllocatePageFailureLeavesCountUnchanged(t *testing.T) {
 	}
 	if got := d.NumPages(); got != before {
 		t.Errorf("NumPages changed after a failed allocation: %d -> %d", before, got)
+	}
+}
+
+// --- ReadPage / WritePage ---
+
+// A page written and read back through the manager is byte-identical.
+func TestWriteReadRoundTrip(t *testing.T) {
+	path := tempDBPath(t)
+	d := mustOpen(t, path)
+
+	id, err := d.AllocatePage()
+	if err != nil {
+		t.Fatalf("AllocatePage: %v", err)
+	}
+	want := filledPage(0xAB)
+	if err := d.WritePage(id, want); err != nil {
+		t.Fatalf("WritePage: %v", err)
+	}
+
+	got := make([]byte, page.PageSize)
+	if err := d.ReadPage(id, got); err != nil {
+		t.Fatalf("ReadPage: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("read page differs from what was written")
+	}
+}
+
+// Writing one page must not disturb its neighbours.
+func TestWritePageIsolation(t *testing.T) {
+	const n = 3
+	path := tempDBPath(t)
+	d := mustOpen(t, path)
+	for i := 0; i < n; i++ {
+		if _, err := d.AllocatePage(); err != nil {
+			t.Fatalf("AllocatePage %d: %v", i, err)
+		}
+	}
+
+	// each page gets a distinct fill
+	for i := 0; i < n; i++ {
+		if err := d.WritePage(disk.PageID(i), filledPage(byte(i+1))); err != nil {
+			t.Fatalf("WritePage %d: %v", i, err)
+		}
+	}
+	for i := 0; i < n; i++ {
+		got := make([]byte, page.PageSize)
+		if err := d.ReadPage(disk.PageID(i), got); err != nil {
+			t.Fatalf("ReadPage %d: %v", i, err)
+		}
+		if !bytes.Equal(got, filledPage(byte(i+1))) {
+			t.Errorf("page %d was corrupted by a write to another page", i)
+		}
+	}
+}
+
+// Written pages must survive a close/reopen: the data really reached the file.
+func TestWrittenPageSurvivesReopen(t *testing.T) {
+	path := tempDBPath(t)
+
+	d, err := disk.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	id, err := d.AllocatePage()
+	if err != nil {
+		t.Fatalf("AllocatePage: %v", err)
+	}
+	if err := d.WritePage(id, filledPage(0xCD)); err != nil {
+		t.Fatalf("WritePage: %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened := mustOpen(t, path)
+	got := make([]byte, page.PageSize)
+	if err := reopened.ReadPage(id, got); err != nil {
+		t.Fatalf("ReadPage after reopen: %v", err)
+	}
+	if !bytes.Equal(got, filledPage(0xCD)) {
+		t.Error("page contents did not survive reopen")
+	}
+}
+
+// Reading or writing a page that was never allocated is rejected, and a
+// rejected write must not grow the file.
+func TestReadWriteOutOfRange(t *testing.T) {
+	path := tempDBPath(t)
+	d := mustOpen(t, path)
+	if _, err := d.AllocatePage(); err != nil { // only page 0 exists
+		t.Fatalf("AllocatePage: %v", err)
+	}
+
+	buf := make([]byte, page.PageSize)
+	if err := d.ReadPage(5, buf); err == nil {
+		t.Error("ReadPage on an unallocated page did not fail")
+	}
+	if err := d.WritePage(5, buf); err == nil {
+		t.Error("WritePage on an unallocated page did not fail")
+	}
+	if got, want := fileSize(t, path), int64(page.PageSize); got != want {
+		t.Errorf("a rejected write grew the file: size %d, want %d", got, want)
+	}
+}
+
+// The buffer must be exactly one page long: ReadAt/WriteAt transfer len(buf)
+// bytes, so a wrong length would read/write a partial or overlapping page.
+func TestReadWriteRejectWrongBufferLength(t *testing.T) {
+	path := tempDBPath(t)
+	d := mustOpen(t, path)
+	if _, err := d.AllocatePage(); err != nil {
+		t.Fatalf("AllocatePage: %v", err)
+	}
+
+	for _, n := range []int{0, 100, int(page.PageSize) - 1, int(page.PageSize) + 1} {
+		if err := d.ReadPage(0, make([]byte, n)); err == nil {
+			t.Errorf("ReadPage accepted a %d-byte buffer", n)
+		}
+		if err := d.WritePage(0, make([]byte, n)); err == nil {
+			t.Errorf("WritePage accepted a %d-byte buffer", n)
+		}
+	}
+}
+
+// Integrated stress capstone: many workers interleave Allocate/Write/Read while
+// others poll NumPages. Each worker only touches pages it allocated itself, so
+// no two goroutines share a page (the disk layer does not coordinate same-page
+// access — that is the buffer pool's job), which keeps page contents
+// deterministic and assertable. Run under -race so a missing lock surfaces as a
+// data race, not just a bad final count.
+func TestConcurrentMixedOperations(t *testing.T) {
+	const (
+		workers        = 20
+		pagesPerWorker = 25
+		pollers        = 4
+	)
+	path := tempDBPath(t)
+	d := mustOpen(t, path)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*pagesPerWorker)
+	ids := make(chan disk.PageID, workers*pagesPerWorker)
+
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for p := 0; p < pagesPerWorker; p++ {
+				id, err := d.AllocatePage()
+				if err != nil {
+					errs <- err
+					return
+				}
+				ids <- id
+
+				// content derived from the (globally unique) id
+				want := filledPage(byte(id))
+				if err := d.WritePage(id, want); err != nil {
+					errs <- err
+					return
+				}
+				got := make([]byte, page.PageSize)
+				if err := d.ReadPage(id, got); err != nil {
+					errs <- err
+					return
+				}
+				if !bytes.Equal(got, want) {
+					errs <- fmt.Errorf("page %d read back wrong contents", id)
+					return
+				}
+			}
+		}()
+	}
+
+	// pollers just hammer the shared counter to add read contention
+	stop := make(chan struct{})
+	var pollWG sync.WaitGroup
+	pollWG.Add(pollers)
+	for i := 0; i < pollers; i++ {
+		go func() {
+			defer pollWG.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = d.NumPages()
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(stop)
+	pollWG.Wait()
+	close(errs)
+	close(ids)
+
+	for err := range errs {
+		t.Fatalf("worker: %v", err)
+	}
+
+	// every allocated id is globally unique
+	const total = workers * pagesPerWorker
+	seen := make(map[disk.PageID]bool, total)
+	for id := range ids {
+		if seen[id] {
+			t.Errorf("id %d handed out more than once", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != total {
+		t.Errorf("got %d distinct ids, want %d", len(seen), total)
+	}
+	if got := d.NumPages(); got != total {
+		t.Errorf("NumPages = %d, want %d", got, total)
+	}
+	if got, want := fileSize(t, path), int64(total)*int64(page.PageSize); got != want {
+		t.Errorf("file size = %d, want %d", got, want)
 	}
 }

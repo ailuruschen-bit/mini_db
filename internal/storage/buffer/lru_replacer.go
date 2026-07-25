@@ -52,8 +52,11 @@ func (r *LRUReplacer) Pin(f frameID) {
 	delete(r.index, f)
 }
 
-// Victim removes and returns the least-recently-used evictable frame. The
-// boolean is false when there is no evictable frame.
+// Victim removes and returns the least-recently-used evictable frame, following
+// the comma-ok convention: the frameID is meaningful only when the boolean is
+// true. When there is no evictable frame the boolean is false and the frameID
+// is the zero value (0), which callers must not read as a real frame — check
+// the boolean first.
 func (r *LRUReplacer) Victim() (frameID, bool) {
 	e := r.order.Back()
 	if e == nil {

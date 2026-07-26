@@ -20,6 +20,14 @@ jobs:
           # Use the exact version from go.mod, so CI and local builds match.
           go-version-file: go.mod
 
+      # Install a pinned golangci-lint so `make check` (which runs `make lint`)
+      # works, and CI and local use the same linter version.
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       # Same entry point as local development, so results never diverge.
-      - name: Run checks (vet + race + coverage)
+      - name: Run checks (vet + lint + race + coverage)
         run: make check

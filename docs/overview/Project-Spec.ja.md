@@ -56,7 +56,7 @@
 
 ### 4. 開発ロードマップ (Roadmap)
 
-- [ ] **Phase 1:** ページ管理、ディスクI/O、バッファプール (Storage Engine)
+- [x] **Phase 1:** ページ管理、ディスクI/O、バッファプール (Storage Engine)
 - [ ] **Phase 2:** B-Treeインデックス、レコードのCRUD (Indexing)
 - [ ] **Phase 3:** トランザクション管理、WALログ (ACID)
 - [ ] **Phase 4:** SQLパーサー、CLIインターフェース (Interface)

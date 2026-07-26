@@ -71,15 +71,19 @@ A byte ladder such as `0x01020304` is a good probe for multi-byte fields: any re
 - **Boundary values**: `0`, the field maximum, and one-past-maximum.
 - **Error path**: sub-width setters must reject out-of-range input.
 
+### 4.4 Concurrent code
+
+Any code with a mutex, a goroutine, or shared mutable state must be tested under `go test -race`, and its test must create real contention — several goroutines hitting the shared state at once, not one after another. Plain assertions can pass by luck when a race happens not to interleave on that run; the race detector flags the unsafe access pattern itself, independent of timing. A concurrency test that never runs under `-race` is close to worthless.
+
 ---
 
 ## 5. Commands
 
 ```bash
 go test ./...                          # all tests
-go test -v ./internal/storage/         # verbose, one line per case
-go test -run TestSlotEntry ./internal/storage/   # filter by name
-go test -cover ./internal/storage/     # coverage percentage
+go test -v ./internal/storage/...       # verbose, one line per case
+go test -run TestSlotEntry ./internal/storage/... # filter by name
+go test -cover ./internal/storage/...   # coverage percentage
 go test -race ./...                    # data-race detector (for concurrent code)
 ```
 

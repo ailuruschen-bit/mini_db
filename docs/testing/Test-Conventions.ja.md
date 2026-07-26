@@ -71,15 +71,19 @@ for _, tt := range tests {
 - **境界値**: `0`、フィールドの最大値、最大値 +1。
 - **エラーパス**: サブ幅の setter は範囲外入力を拒否する。
 
+### 4.4 並行コード
+
+ミューテックス・goroutine・共有可変状態を持つコードは必ず `go test -race` で検証し、そのテストは**実際の競合**を作ること — 複数の goroutine が同時に共有状態を叩く（順番にではなく）。通常のアサーションは、その実行でたまたま競合がインターリーブしなければ運良く通ってしまう。レースディテクタはタイミングに依存せず、危険なアクセスパターン自体を検出する。`-race` で一度も走らせない並行テストは、ほぼ無価値である。
+
 ---
 
 ## 5. コマンド
 
 ```bash
 go test ./...                          # 全テスト
-go test -v ./internal/storage/         # 詳細出力（ケースごとに 1 行）
-go test -run TestSlotEntry ./internal/storage/   # 名前でフィルタ
-go test -cover ./internal/storage/     # カバレッジ率
+go test -v ./internal/storage/...       # 詳細出力（ケースごとに 1 行）
+go test -run TestSlotEntry ./internal/storage/... # 名前でフィルタ
+go test -cover ./internal/storage/...   # カバレッジ率
 go test -race ./...                    # データ競合検出（並行コード用）
 ```
 

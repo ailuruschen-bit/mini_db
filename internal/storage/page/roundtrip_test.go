@@ -1,14 +1,14 @@
-// Package storage_test holds the black-box tests: they may use only the
-// exported API, so they verify the contract callers actually depend on rather
-// than the internal byte layout (covered by the in-package tests).
-package storage_test
+// Package page_test holds the black-box tests: they may use only the exported
+// API, so they verify the contract callers actually depend on rather than the
+// internal byte layout (covered by the in-package tests).
+package page_test
 
 import (
 	"bytes"
 	"reflect"
 	"testing"
 
-	"github.com/ailuruschen-bit/minidb/internal/storage"
+	"github.com/ailuruschen-bit/minidb/internal/storage/page"
 )
 
 // Everything observable through the exported API, gathered so an original and
@@ -42,7 +42,7 @@ type tupleSnapshot struct {
 	hasNull  bool
 }
 
-func snapshot(p *storage.SlottedPage) pageSnapshot {
+func snapshot(p *page.SlottedPage) pageSnapshot {
 	h := p.Header()
 	s := pageSnapshot{
 		lsn:      h.PdLsn(),
@@ -88,44 +88,44 @@ func TestPageRoundTripThroughBytes(t *testing.T) {
 		}
 	}
 
-	page := storage.NewSlottedPage([storage.PageSize]byte{})
+	pg := page.NewSlottedPage([page.PageSize]byte{})
 
-	h := page.Header()
+	h := pg.Header()
 	h.SetPdLsn(0x0102030405060708)
 	h.SetPdChecksum(0xABCD)
 	h.SetPdFlags(0x0F0F)
 	h.SetPdSpecial(0x1234)
-	h.SetPdPagesize(storage.PageSize)
+	h.SetPdPagesize(page.PageSize)
 	h.SetPdPruneXid(0xDEADBEEF)
 
 	// three slots, tuple area starting at 7000
 	const slots = 3
-	h.SetPdUpper(storage.HeaderSize + slots*storage.SlotEntrySize)
+	h.SetPdUpper(page.HeaderSize + slots*page.SlotEntrySize)
 	h.SetPdLower(7000)
 
 	offsets := [slots]uint16{7000, 7100, 7200}
 	for i := uint16(0); i < slots; i++ {
-		e := page.SlotEntryAt(i)
+		e := pg.SlotEntryAt(i)
 		mustOK(e.SetOffset(offsets[i]))
-		mustOK(e.SetLength(storage.TupleHeaderSize))
+		mustOK(e.SetLength(page.TupleHeaderSize))
 		mustOK(e.SetFlag(1)) // NORMAL
 	}
 
-	first := page.SlotEntryAt(0)
-	th := page.LocateTupleByEntry(&first).TupleHeader()
+	first := pg.SlotEntryAt(0)
+	th := pg.LocateTupleByEntry(&first).TupleHeader()
 	th.SetTxMin(1001)
 	th.SetTxMax(0)
-	mustOK(th.SetFlags(storage.FlagHasNull | storage.FlagXminCommitted))
+	mustOK(th.SetFlags(page.FlagHasNull | page.FlagXminCommitted))
 	mustOK(th.SetColumnCount(7))
 	th.SetHoff(13)
 
 	// --- out and back in ---
-	rebuilt := storage.NewSlottedPage([storage.PageSize]byte(page.Bytes()))
+	rebuilt := page.NewSlottedPage([page.PageSize]byte(pg.Bytes()))
 
-	if !bytes.Equal(page.Bytes(), rebuilt.Bytes()) {
+	if !bytes.Equal(pg.Bytes(), rebuilt.Bytes()) {
 		t.Fatal("rebuilt page is not byte-identical to the original")
 	}
-	if got, want := snapshot(rebuilt), snapshot(page); !reflect.DeepEqual(got, want) {
+	if got, want := snapshot(rebuilt), snapshot(pg); !reflect.DeepEqual(got, want) {
 		t.Errorf("state read back differs\n got: %+v\nwant: %+v", got, want)
 	}
 }
@@ -133,13 +133,13 @@ func TestPageRoundTripThroughBytes(t *testing.T) {
 // A page rebuilt from bytes must be independent of the original: NewSlottedPage
 // copies, so mutating one must not disturb the other.
 func TestRebuiltPageIsIndependent(t *testing.T) {
-	page := storage.NewSlottedPage([storage.PageSize]byte{})
-	page.Header().SetPdSpecial(0x1111)
+	pg := page.NewSlottedPage([page.PageSize]byte{})
+	pg.Header().SetPdSpecial(0x1111)
 
-	rebuilt := storage.NewSlottedPage([storage.PageSize]byte(page.Bytes()))
+	rebuilt := page.NewSlottedPage([page.PageSize]byte(pg.Bytes()))
 	rebuilt.Header().SetPdSpecial(0x2222)
 
-	if got := page.Header().PdSpecial(); got != 0x1111 {
+	if got := pg.Header().PdSpecial(); got != 0x1111 {
 		t.Errorf("original followed the rebuilt page's write: %#x, want 0x1111", got)
 	}
 	if got := rebuilt.Header().PdSpecial(); got != 0x2222 {

@@ -8,7 +8,7 @@ The storage engine models PostgreSQL's on-disk structures and adopts the **Slott
 
 ## 1. Layout Constants
 
-These map one-to-one to the constants in `internal/storage/slotted_page.go`.
+These map one-to-one to the constants in `internal/storage/page/slotted_page.go`.
 
 | Constant          | Value  | Meaning                                   |
 | :---------------- | :----- | :---------------------------------------- |

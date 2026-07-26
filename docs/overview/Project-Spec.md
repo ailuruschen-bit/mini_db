@@ -56,7 +56,7 @@ minidb is a disk-oriented relational database engine built from scratch in Go, m
 
 ### 4. Roadmap
 
-- [ ] **Phase 1:** Page management, disk I/O, buffer pool (Storage Engine)
+- [x] **Phase 1:** Page management, disk I/O, buffer pool (Storage Engine)
 - [ ] **Phase 2:** B-Tree index, record CRUD (Indexing)
 - [ ] **Phase 3:** Transaction management, WAL logging (ACID)
 - [ ] **Phase 4:** SQL parser, CLI interface (Interface)

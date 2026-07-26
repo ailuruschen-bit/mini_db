@@ -14,11 +14,11 @@ func initPage() *SlottedPage {
 	return p
 }
 
-// readTuple reads the tuple bytes a slot points at (white-box view for tests).
+// readTuple reads the tuple bytes a slot points at, via the public Tuple.Bytes.
 func readTuple(t *testing.T, p *SlottedPage, slot uint16) []byte {
 	t.Helper()
 	e := p.SlotEntryAt(slot)
-	return p.LocateTupleByEntry(&e).data
+	return p.LocateTupleByEntry(&e).Bytes()
 }
 
 // NewSlottedPage takes its argument by value, so the page must own a copy of

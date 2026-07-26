@@ -44,6 +44,14 @@ func (t *Tuple) TupleHeader() *TupleHeader {
 	return &TupleHeader{(*[TupleHeaderSize]byte)(t.data[:TupleHeaderSize])}
 }
 
+// Bytes returns the tuple's raw bytes as a view over the page (not a copy), so a
+// caller outside this package can read a located tuple. Like SlottedPage.Bytes
+// it aliases the page's backing array; the view is valid only while the page is
+// pinned, so copy it if it must outlive that.
+func (t *Tuple) Bytes() []byte {
+	return t.data
+}
+
 // === Tuple Header Define (12 byte) ===
 type TupleHeader struct {
 	data *[TupleHeaderSize]byte

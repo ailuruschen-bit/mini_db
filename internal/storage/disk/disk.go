@@ -44,7 +44,7 @@ func Open(path string) (*DiskManager, error) {
 
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("disk: stat %q: %w", path, err)
 	}
 
@@ -52,7 +52,7 @@ func Open(path string) (*DiskManager, error) {
 	// number of pages; anything else means a corrupt or half-written file.
 	size := info.Size()
 	if size%int64(page.PageSize) != 0 {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("disk: file %q is %d bytes, not a multiple of page size %d (corrupt?)", path, size, page.PageSize)
 	}
 

@@ -1,0 +1,14 @@
+# golangci-lint configuration (schema v2). See https://golangci-lint.run.
+version: "2"
+
+linters:
+  # The standard set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+
+  exclusions:
+    rules:
+      # Ignoring errors from teardown / known-good helper calls (Close, UnpinPage)
+      # is idiomatic in tests; checking every one would only add noise.
+      - path: _test\.go
+        linters:
+          - errcheck

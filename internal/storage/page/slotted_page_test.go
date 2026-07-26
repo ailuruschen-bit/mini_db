@@ -1,9 +1,25 @@
 package page
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"testing"
 )
+
+// initPage returns a freshly formatted, ready-to-insert empty page.
+func initPage() *SlottedPage {
+	p := blankPage()
+	p.Init()
+	return p
+}
+
+// readTuple reads the tuple bytes a slot points at (white-box view for tests).
+func readTuple(t *testing.T, p *SlottedPage, slot uint16) []byte {
+	t.Helper()
+	e := p.SlotEntryAt(slot)
+	return p.LocateTupleByEntry(&e).data
+}
 
 // NewSlottedPage takes its argument by value, so the page must own a copy of
 // the bytes. A caller mutating its own array afterwards must not be able to
@@ -250,5 +266,145 @@ func TestSlottedPageInit(t *testing.T) {
 		if p.data[i] != 0 {
 			t.Fatalf("byte %d = %#x after Init, want 0 (stale data survived the format)", i, p.data[i])
 		}
+	}
+}
+
+// An empty page's free space is the whole page minus the header.
+func TestFreeSpaceEmptyPage(t *testing.T) {
+	p := initPage()
+	if got, want := p.FreeSpace(), PageSize-HeaderSize; got != want {
+		t.Errorf("FreeSpace on empty page = %d, want %d", got, want)
+	}
+}
+
+// A single insert lands the tuple at the top of the free space, appends slot 0,
+// and advances both boundary pointers. Values are pinned down explicitly.
+func TestInsertTuplePlacement(t *testing.T) {
+	p := initPage()
+	data := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01}
+
+	slot, err := p.InsertTuple(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slot != 0 {
+		t.Errorf("first slot index = %d, want 0", slot)
+	}
+
+	wantOffset := PageSize - uint16(len(data)) // tuple sits against the page end
+	e := p.SlotEntryAt(0)
+	if got := e.Offset(); got != wantOffset {
+		t.Errorf("slot offset = %d, want %d", got, wantOffset)
+	}
+	if got := e.Length(); got != uint16(len(data)) {
+		t.Errorf("slot length = %d, want %d", got, len(data))
+	}
+	if got := p.Header().PdUpper(); got != HeaderSize+SlotEntrySize {
+		t.Errorf("pd_upper = %d, want %d (grew by one slot)", got, HeaderSize+SlotEntrySize)
+	}
+	if got := p.Header().PdLower(); got != wantOffset {
+		t.Errorf("pd_lower = %d, want %d (grew down by the tuple length)", got, wantOffset)
+	}
+	if got := p.data[wantOffset : wantOffset+uint16(len(data))]; !bytes.Equal(got, data) {
+		t.Errorf("tuple bytes = %x, want %x", got, data)
+	}
+	if got := p.SlotCount(); got != 1 {
+		t.Errorf("SlotCount = %d, want 1", got)
+	}
+}
+
+// Several inserts each get consecutive slots and read back intact — proving they
+// do not overlap.
+func TestInsertTupleMultipleRoundTrip(t *testing.T) {
+	p := initPage()
+	tuples := [][]byte{
+		{0x11, 0x22},
+		{0x33, 0x44, 0x55},
+		{0x66},
+	}
+	for i, data := range tuples {
+		slot, err := p.InsertTuple(data)
+		if err != nil {
+			t.Fatalf("insert %d: %v", i, err)
+		}
+		if slot != uint16(i) {
+			t.Errorf("insert %d: slot = %d, want %d", i, slot, i)
+		}
+	}
+	if got := p.SlotCount(); got != uint16(len(tuples)) {
+		t.Fatalf("SlotCount = %d, want %d", got, len(tuples))
+	}
+	for i, data := range tuples {
+		if got := readTuple(t, p, uint16(i)); !bytes.Equal(got, data) {
+			t.Errorf("tuple %d = %x, want %x", i, got, data)
+		}
+	}
+}
+
+// A tuple that does not fit is rejected with ErrNoSpace and must not disturb the
+// page.
+func TestInsertTupleNoSpaceLeavesPageUnchanged(t *testing.T) {
+	p := initPage()
+
+	// Fill the page down to 10 free bytes.
+	big := make([]byte, int(PageSize-HeaderSize-SlotEntrySize)-10)
+	for i := range big {
+		big[i] = 0xAB
+	}
+	if _, err := p.InsertTuple(big); err != nil {
+		t.Fatalf("setup insert: %v", err)
+	}
+
+	upper, lower, count := p.Header().PdUpper(), p.Header().PdLower(), p.SlotCount()
+
+	if _, err := p.InsertTuple(make([]byte, 20)); !errors.Is(err, ErrNoSpace) { // needs 24 > 10
+		t.Errorf("err = %v, want ErrNoSpace", err)
+	}
+	if p.Header().PdUpper() != upper || p.Header().PdLower() != lower || p.SlotCount() != count {
+		t.Error("a failed insert must leave the page unchanged")
+	}
+}
+
+// Data larger than a page (and larger than a uint16) is reported as ErrNoSpace,
+// not silently truncated by an overflow.
+func TestInsertTupleTooLargeReturnsNoSpace(t *testing.T) {
+	p := initPage()
+	if _, err := p.InsertTuple(make([]byte, 70000)); !errors.Is(err, ErrNoSpace) {
+		t.Errorf("err = %v, want ErrNoSpace", err)
+	}
+	if got := p.SlotCount(); got != 0 {
+		t.Errorf("SlotCount = %d, want 0 (nothing inserted)", got)
+	}
+}
+
+// Robustness: if the page's pointers were corrupt such that a slot's offset
+// would overflow its 15-bit field, InsertTuple fails rather than writing a
+// truncated offset that would point somewhere wrong.
+func TestInsertTupleRejectsOverflowingOffset(t *testing.T) {
+	p := initPage()
+	p.Header().SetPdLower(40000) // corrupt: beyond a real page; offset would exceed 32767
+
+	_, err := p.InsertTuple([]byte{0x01})
+	if err == nil || errors.Is(err, ErrNoSpace) {
+		t.Errorf("err = %v, want a field-overflow error", err)
+	}
+	if got := p.SlotCount(); got != 0 {
+		t.Errorf("SlotCount = %d, want 0 (nothing committed)", got)
+	}
+}
+
+// Likewise a length that would overflow the slot's 15-bit length field is
+// rejected, and the boundary pointers are left uncommitted.
+func TestInsertTupleRejectsOverflowingLength(t *testing.T) {
+	p := initPage()
+	p.Header().SetPdLower(60000) // corrupt: lots of apparent free space
+
+	// offset (60000 - len) stays in range, but the length itself overflows.
+	_, err := p.InsertTuple(make([]byte, 40000))
+	if err == nil || errors.Is(err, ErrNoSpace) {
+		t.Errorf("err = %v, want a field-overflow error", err)
+	}
+	if got := p.SlotCount(); got != 0 {
+		t.Errorf("SlotCount = %d, want 0 (nothing committed)", got)
 	}
 }

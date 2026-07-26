@@ -60,6 +60,8 @@
 - [x] **Slots:** すべての entry を順に yield し、早期 `break` を尊重し、一切アロケートしない（`testing.AllocsPerRun` で固定）。
 - [x] **LocateTupleByEntry:** 返されたスライスが `[offset, offset+length)` を正確に覆う。
 - [x] **Init:** 妥当な空ページに整形する — `pd_upper = HeaderSize`、`pd_lower = PageSize`、`SlotCount == 0` — バッキング配列が別ページのデータで埋まっていても残バイトをゼロにする。（単にゼロにしただけのページは `SlotCount` がアンダーフローするため、ポインタ値を明示的に固定する。）
+- [x] **FreeSpace:** 空ページではページ全体からヘッダーを引いた値。
+- [x] **InsertTuple:** タプルは空き領域の先頭に置かれ、スロットが追加され、両境界ポインタが進む（ゴールデンな offset/length）; 複数挿入は連番スロットを得て、重ならず往復する; `ErrNoSpace` はページを変更しない; ページ（または `uint16`）より大きいデータは切り詰めず拒否する; 堅牢性 — スロットの offset/length フィールドをオーバーフローさせる破損ポインタは、切り詰めて書くのではなく拒否する。
 
 ## 5. 往復忠実性（`roundtrip_test.go`、ブラックボックス `page_test`）
 

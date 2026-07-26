@@ -1,9 +1,15 @@
 package page
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 )
+
+// ErrNoSpace is returned by InsertTuple when the free space cannot hold the
+// tuple plus its slot. It is not a corruption — the caller (the heap layer)
+// uses it to move on to another page or allocate a new one.
+var ErrNoSpace = errors.New("page: not enough free space for the tuple")
 
 const (
 	PageSize        uint16 = 8192
@@ -115,4 +121,50 @@ func (p *SlottedPage) Init() {
 	h.SetPdUpper(HeaderSize) // empty directory: it ends where it begins
 	h.SetPdLower(PageSize)   // no tuples yet: free space runs to the page end
 	h.SetPdPagesize(PageSize)
+}
+
+// FreeSpace reports the bytes available between the slot directory and the tuple
+// data area. A new tuple needs its own length plus one SlotEntrySize-byte slot,
+// so it fits only when FreeSpace() >= len(tuple) + SlotEntrySize.
+func (p *SlottedPage) FreeSpace() uint16 {
+	h := p.Header()
+	return h.PdLower() - h.PdUpper()
+}
+
+// InsertTuple copies a fully-assembled tuple's bytes into the page and appends a
+// slot pointing at them, returning the new slot's index. The bytes are opaque to
+// the page: assembling the tuple (its header, MVCC fields, columns) is the
+// caller's job — the page only manages placement.
+//
+// A tuple consumes its own length plus one SlotEntrySize slot. If the free space
+// cannot hold both, it returns ErrNoSpace and leaves the page unchanged, so the
+// caller can try another page. v1 only ever appends into the free space; it does
+// not reclaim the space of deleted tuples (compaction/vacuum, deferred).
+func (p *SlottedPage) InsertTuple(data []byte) (uint16, error) {
+	// Compare in int to avoid a uint16 overflow when data is absurdly large.
+	if len(data)+int(SlotEntrySize) > int(p.FreeSpace()) {
+		return 0, ErrNoSpace
+	}
+	dataLen := uint16(len(data))
+
+	h := p.Header()
+	slotIndex := p.SlotCount()
+	tupleOffset := h.PdLower() - dataLen
+
+	// Write into the free space first, then advance the boundary pointers to
+	// commit — mirroring AllocatePage's "write, then bump the counter". The
+	// setters cannot fail here (values fit their fields, guaranteed by the space
+	// check), but propagating their errors keeps the page untouched if they did.
+	entry := p.slotEntryAt(slotIndex) // view over the to-be slot at pd_upper
+	if _, err := entry.SetOffset(tupleOffset); err != nil {
+		return 0, fmt.Errorf("page: insert tuple: %w", err)
+	}
+	if _, err := entry.SetLength(dataLen); err != nil {
+		return 0, fmt.Errorf("page: insert tuple: %w", err)
+	}
+	copy(p.data[tupleOffset:h.PdLower()], data)
+
+	h.SetPdUpper(h.PdUpper() + SlotEntrySize)
+	h.SetPdLower(tupleOffset)
+	return slotIndex, nil
 }

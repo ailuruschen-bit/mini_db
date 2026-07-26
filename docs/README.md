@@ -25,3 +25,5 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
 - [Test Conventions](testing/Test-Conventions.md) — global rules for all modules
 - **Storage**
   - [Storage Module Test Plan](testing/storage/Storage-Test-Plan.md)
+- **Access**
+  - [Access Module Test Plan](testing/access/Access-Test-Plan.md)

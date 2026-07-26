@@ -59,6 +59,7 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 - [x] **SlotEntryAt:** slot i maps to the window at `HeaderSize+i*SlotEntrySize`; a setter on the returned entry writes back to the page; an out-of-range index panics.
 - [x] **Slots:** yields every entry in order, honours early `break`, and allocates nothing (locked in with `testing.AllocsPerRun`).
 - [x] **LocateTupleByEntry:** returned slice covers exactly `[offset, offset+length)`.
+- [x] **Tuple.Bytes:** returns a tuple's raw byte view (exercised by the round-trip reads).
 - [x] **Init:** formats a valid empty page — `pd_upper = HeaderSize`, `pd_lower = PageSize`, `SlotCount == 0` — and zeroes leftover bytes, even when the backing array was full of another page's data. (A merely zeroed page underflows `SlotCount`, so the pointer values are pinned down explicitly.)
 - [x] **FreeSpace:** the whole page minus the header on an empty page.
 - [x] **InsertTuple:** a tuple lands at the top of the free space with an appended slot and both boundary pointers advanced (golden offsets/lengths); multiple inserts get consecutive slots and round-trip without overlap; `ErrNoSpace` leaves the page unchanged; data larger than a page (or a `uint16`) is rejected, not truncated; robustness — a corrupt pointer that would overflow a slot's offset/length field is rejected rather than written truncated.
@@ -111,6 +112,7 @@ A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU e
 - [x] Returns a formatted, ready-to-use empty page (`SlotCount == 0`, `pd_upper = HeaderSize`, `pd_lower = PageSize`), not a bag of zeros.
 - [x] Assigns consecutive ids (each call extends the file).
 - [x] Starts dirty — the formatted header lives only in memory until flushed (white-box).
+- [x] **NumPages** tracks the file growing as pages are allocated (passthrough to the disk manager).
 
 **Dirty lifecycle, eviction & persistence**
 

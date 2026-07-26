@@ -59,6 +59,7 @@
 - [x] **SlotEntryAt:** スロット i が `HeaderSize+i*SlotEntrySize` の窓に対応する; 返された entry への setter がページに書き戻される; 範囲外の添字は panic する。
 - [x] **Slots:** すべての entry を順に yield し、早期 `break` を尊重し、一切アロケートしない（`testing.AllocsPerRun` で固定）。
 - [x] **LocateTupleByEntry:** 返されたスライスが `[offset, offset+length)` を正確に覆う。
+- [x] **Tuple.Bytes:** タプルの生バイトビューを返す（往復読み取りで検証）。
 - [x] **Init:** 妥当な空ページに整形する — `pd_upper = HeaderSize`、`pd_lower = PageSize`、`SlotCount == 0` — バッキング配列が別ページのデータで埋まっていても残バイトをゼロにする。（単にゼロにしただけのページは `SlotCount` がアンダーフローするため、ポインタ値を明示的に固定する。）
 - [x] **FreeSpace:** 空ページではページ全体からヘッダーを引いた値。
 - [x] **InsertTuple:** タプルは空き領域の先頭に置かれ、スロットが追加され、両境界ポインタが進む（ゴールデンな offset/length）; 複数挿入は連番スロットを得て、重ならず往復する; `ErrNoSpace` はページを変更しない; ページ（または `uint16`）より大きいデータは切り詰めず拒否する; 堅牢性 — スロットの offset/length フィールドをオーバーフローさせる破損ポインタは、切り詰めて書くのではなく拒否する。
@@ -111,6 +112,7 @@
 - [x] 整形済みで即使用可能な空ページ（`SlotCount == 0`、`pd_upper = HeaderSize`、`pd_lower = PageSize`）を返す。ゼロの塊ではない。
 - [x] 連番の id を割り当てる（呼び出しごとにファイルを拡張）。
 - [x] dirty で始まる — 整形したヘッダーは flush まではメモリにのみ存在する（ホワイトボックス）。
+- [x] **NumPages** はページ割り当てに伴うファイルの成長を追う（ディスクマネージャへの透過呼び出し）。
 
 **dirty ライフサイクル・追い出し・永続化**
 

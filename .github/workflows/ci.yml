@@ -1,0 +1,25 @@
+name: CI
+
+# Run on every push to main and on every pull request, so no change reaches
+# main without passing the same checks a developer runs locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Use the exact version from go.mod, so CI and local builds match.
+          go-version-file: go.mod
+
+      # Same entry point as local development, so results never diverge.
+      - name: Run checks (vet + race + coverage)
+        run: make check

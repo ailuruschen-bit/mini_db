@@ -217,3 +217,38 @@ func TestLocateTupleByEntry(t *testing.T) {
 		t.Error("write through the tuple spilled onto a neighbouring byte")
 	}
 }
+
+// Init must turn any frame — even one still holding a previous page's bytes —
+// into a valid empty page: boundary pointers set so free-space and SlotCount
+// arithmetic is well-defined, and no stale bytes left behind. A merely zeroed
+// page would underflow SlotCount, so this pins down the actual pointer values.
+func TestSlottedPageInit(t *testing.T) {
+	var raw [PageSize]byte
+	for i := range raw {
+		raw[i] = 0xFF // simulate leftover bytes from the frame's previous page
+	}
+	p := NewSlottedPage(raw)
+
+	p.Init()
+
+	h := p.Header()
+	if got := h.PdUpper(); got != HeaderSize {
+		t.Errorf("PdUpper = %d, want %d (empty directory ends at the header)", got, HeaderSize)
+	}
+	if got := h.PdLower(); got != PageSize {
+		t.Errorf("PdLower = %d, want %d (no tuples: free space runs to the end)", got, PageSize)
+	}
+	if got := h.PdPagesize(); got != PageSize {
+		t.Errorf("PdPagesize = %d, want %d", got, PageSize)
+	}
+	if got := p.SlotCount(); got != 0 {
+		t.Errorf("SlotCount = %d, want 0 (an empty page has no slots)", got)
+	}
+
+	// Every byte past the header must be zero: no leftover 0xFF survived.
+	for i := int(HeaderSize); i < int(PageSize); i++ {
+		if p.data[i] != 0 {
+			t.Fatalf("byte %d = %#x after Init, want 0 (stale data survived the format)", i, p.data[i])
+		}
+	}
+}

@@ -100,3 +100,19 @@ func (p *SlottedPage) Bytes() []byte {
 func NewSlottedPage(data [PageSize]byte) *SlottedPage {
 	return &SlottedPage{data: data}
 }
+
+// Init formats the page as a valid, ready-to-use empty page: it zeroes the
+// backing array — so no bytes from a frame's previous occupant survive — and
+// sets the boundary pointers that make the free-space and SlotCount arithmetic
+// well-defined. A merely zeroed page is NOT valid: with pd_upper == 0,
+// SlotCount() computes (0 - HeaderSize) and underflows to a garbage count.
+//
+// After Init the slot directory is empty and the whole span between the header
+// and the end of the page is free space.
+func (p *SlottedPage) Init() {
+	clear(p.data[:])
+	h := p.Header()
+	h.SetPdUpper(HeaderSize) // empty directory: it ends where it begins
+	h.SetPdLower(PageSize)   // no tuples yet: free space runs to the page end
+	h.SetPdPagesize(PageSize)
+}

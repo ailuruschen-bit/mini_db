@@ -11,50 +11,13 @@ import (
 // uses it to move on to another page or allocate a new one.
 var ErrNoSpace = errors.New("page: not enough free space for the tuple")
 
+// Layout constants for the slotted-page format. PageSize (the frame size) lives
+// with the Page abstraction in page.go, since it is not specific to this layout.
 const (
-	PageSize        uint16 = 8192
 	HeaderSize      uint16 = 24
 	SlotEntrySize   uint16 = 4
 	TupleHeaderSize uint16 = 12
 )
-
-// noCopy triggers go vet's copylock check when a value embedding it is copied
-// by value. It implements sync.Locker but does nothing at runtime and is
-// zero-sized, so it adds neither behavior nor memory overhead.
-type noCopy struct{}
-
-func (*noCopy) Lock()   {}
-func (*noCopy) Unlock() {}
-
-// === Page Define ===
-//
-// Page is a raw 8KB page frame: the unit the buffer pool stores and reuses. It
-// carries no interpretation of its bytes — an access method overlays a view
-// (AsSlottedPage here, a B+Tree node in the index layer, ...) to read and write
-// structured content. Keeping the frame layout-agnostic is what lets one buffer
-// pool back files of different page kinds.
-//
-// Page owns its backing array inline, so copying a Page by value would detach
-// every view taken from the original; the embedded noCopy makes `go vet` flag
-// any accidental value copy. Always pass it by pointer.
-type Page struct {
-	_    noCopy
-	data [PageSize]byte
-}
-
-// NewPage returns a fresh, zeroed page frame. It is not formatted into any page
-// kind: the access method that takes it (via AsSlottedPage, Init, ...) is
-// responsible for formatting it before use.
-func NewPage() *Page {
-	return &Page{}
-}
-
-// Bytes exposes the frame's raw storage so it can be handed to the disk layer
-// (disk.ReadPage/WritePage into p.Bytes()). It returns a view, not a copy: the
-// slice aliases the frame's backing array. Use it for I/O.
-func (p *Page) Bytes() []byte {
-	return p.data[:]
-}
 
 // === SlottedPage Define ===
 //

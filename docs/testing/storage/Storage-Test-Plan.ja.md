@@ -12,7 +12,7 @@
 
 **page**（`helpers_test.go`）:
 
-- [x] `blankPage()` — ゼロ初期化された `*SlottedPage`。
+- [x] `blankPage()` — 新しいゼロ初期化フレーム上の `*SlottedPage` ビュー（`AsSlottedPage(NewPage())`）。
 - [x] `blankSlotEntry()` / `blankTupleHeader()` / `blankTuple(size)` — 単体のゼロ初期化ビュー。ページを組み立てずにコンポーネントを検証できる。
 - [x] `beBytes(v, size)` — ゴールデン検証用のビッグエンディアン期待値ビルダー。
 
@@ -53,7 +53,8 @@
 
 ## 4. SlottedPage 組み立て（`slotted_page_test.go`、ホワイトボックス）
 
-- [x] **`NewSlottedPage` の値セマンティクス:** 構築後に入力配列を変更してもページに影響しない。
+- [x] **`Page` フレーム:** `NewPage` は自身のバイトを所有するゼロ初期化フレームを返す — 別々のフレームは記憶域を共有しない。
+- [x] **`AsSlottedPage` はビュー:** コピーせずにフレームへスロットアクセサを被せる; ビュー経由の書き込みはフレームのバイトに届き、以後のビューもそれを観測する。
 - [x] **ゼロコピーの別名不変条件:** `Header()` / `SlotEntry` 経由の書き込みが、新たに取得したビューと生 `data` の両方で見える。
 - [x] **SlotCount:** `pd_upper` が N を示すとき N; `pd_upper == HeaderSize`（空ページ）のとき `0`。
 - [x] **SlotEntryAt:** スロット i が `HeaderSize+i*SlotEntrySize` の窓に対応する; 返された entry への setter がページに書き戻される; 範囲外の添字は panic する。
@@ -66,7 +67,7 @@
 
 ## 5. 往復忠実性（`roundtrip_test.go`、ブラックボックス `page_test`）
 
-- [x] 公開 API でページを組み立て（ヘッダー + スロット + タプル）→ `data` を取り出す → `NewSlottedPage` で再構築 → すべての getter が同じ値を読み戻す。
+- [x] 公開 API でページを組み立て（ヘッダー + スロット + タプル）→ `data` を取り出す → 新しい `NewPage` フレームへ（バイトをコピーして）再構築 → すべての getter が同じ値を読み戻し、再構築ページは元と独立している。
 
 ---
 
@@ -103,15 +104,15 @@
 
 **Fetch と pin**
 
-- [x] 常駐中は `FetchPage` が同一の `*SlottedPage` インスタンスを返す。
+- [x] 常駐中は `FetchPage` が同一の `*page.Page` フレームインスタンスを返す。
 - [x] pin カウントは fetch ごとに増え unpin ごとに減る; フレームが追い出し候補になるのは 0 のときだけ（カウンタと replacer をホワイトボックスで検証）。
 - [x] 全フレームが pin された状態でのミスは `ErrNoFreeFrame` を返す — `FetchPage`（ホワイトボックス、シード済み fakeDisk）と `NewPage`（ブラックボックス）の両方から。pin を 1 つ解放すれば再び空きができる。
 
 **NewPage**
 
-- [x] 整形済みで即使用可能な空ページ（`SlotCount == 0`、`pd_upper = HeaderSize`、`pd_lower = PageSize`）を返す。ゼロの塊ではない。
+- [x] ゼロ初期化された生フレームを返す — プールはページ種別の整形を課さない; 全バイトがゼロで、整形はアクセスメソッドが行う。
 - [x] 連番の id を割り当てる（呼び出しごとにファイルを拡張）。
-- [x] dirty で始まる — 整形したヘッダーは flush まではメモリにのみ存在する（ホワイトボックス）。
+- [x] clean で始まる — ゼロ初期化フレームは `AllocatePage` がディスクに書いたゼロページと既に一致するため、アクセスメソッドが整形して dirty で unpin するまで flush すべきものはない（ホワイトボックス）。
 - [x] **NumPages** はページ割り当てに伴うファイルの成長を追う（ディスクマネージャへの透過呼び出し）。
 
 **dirty ライフサイクル・追い出し・永続化**
@@ -143,7 +144,7 @@
 2. PageHeader — テーブル駆動 + ゴールデンのパターンを確立。
 3. SlotEntry — ビットパック、独立性、エラーパス。
 4. TupleHeader — 12 バイトのパックレイアウト。
-5. SlottedPage 組み立て — 値セマンティクス、別名、スロットアクセス、`Init`。
+5. SlottedPage 組み立て — `Page` フレーム + `AsSlottedPage` ビュー、別名、スロットアクセス、`Init`。
 6. 往復（ブラックボックス）。
 7. DiskManager — Open/Close、AllocatePage、Read/Write、並行性（`-race`）、Sync。
 8. LRUReplacer — 順序と pin/unpin セマンティクス。

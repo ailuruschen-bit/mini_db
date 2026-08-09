@@ -12,7 +12,7 @@ The module is built bottom-up: `page` (byte layout) → `disk` (pages ↔ file) 
 
 **page** (`helpers_test.go`):
 
-- [x] `blankPage()` — a zeroed `*SlottedPage`.
+- [x] `blankPage()` — a `*SlottedPage` view over a fresh zeroed frame (`AsSlottedPage(NewPage())`).
 - [x] `blankSlotEntry()` / `blankTupleHeader()` / `blankTuple(size)` — standalone zeroed views, so a component can be exercised without building a page around it.
 - [x] `beBytes(v, size)` — big-endian expectation builder for golden assertions.
 
@@ -53,7 +53,8 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 
 ## 4. SlottedPage assembly (`slotted_page_test.go`, white-box)
 
-- [x] **`NewSlottedPage` value semantics:** mutating the input array after construction does not affect the page.
+- [x] **`Page` frame:** `NewPage` returns a zeroed frame that owns its bytes — separate frames never share storage.
+- [x] **`AsSlottedPage` is a view:** it overlays the slotted accessors on a frame without copying; a write through the view reaches the frame's bytes and any later view observes it.
 - [x] **Zero-copy alias invariant:** a write through `Header()` / a `SlotEntry` is visible via a freshly obtained view and in the raw `data`.
 - [x] **SlotCount:** N when `pd_upper` implies N; `0` when `pd_upper == HeaderSize` (empty page).
 - [x] **SlotEntryAt:** slot i maps to the window at `HeaderSize+i*SlotEntrySize`; a setter on the returned entry writes back to the page; an out-of-range index panics.
@@ -66,7 +67,7 @@ Layout: `t_xmin[0:4]` `t_xmax[4:8]` `flags`(6b)+`col_count`(10b) `[8:10]` `t_hof
 
 ## 5. Round-trip fidelity (`roundtrip_test.go`, black-box `page_test`)
 
-- [x] Assemble a page through the public API (header + slot + tuple) → take `data` → reconstruct via `NewSlottedPage` → every getter reads back the same value.
+- [x] Assemble a page through the public API (header + slot + tuple) → take `data` → reconstruct into a fresh `NewPage` frame (bytes copied in) → every getter reads back the same value, and the rebuilt page is independent of the original.
 
 ---
 
@@ -103,15 +104,15 @@ A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU e
 
 **Fetch & pin**
 
-- [x] While resident, `FetchPage` returns the same `*SlottedPage` instance.
+- [x] While resident, `FetchPage` returns the same `*page.Page` frame instance.
 - [x] Pin count rises per fetch, falls per unpin; a frame becomes an eviction candidate only at zero (white-box on the counter and replacer).
 - [x] A miss with every frame pinned returns `ErrNoFreeFrame` — from both `FetchPage` (white-box, seeded fake disk) and `NewPage` (black-box), and freeing a pin makes room again.
 
 **NewPage**
 
-- [x] Returns a formatted, ready-to-use empty page (`SlotCount == 0`, `pd_upper = HeaderSize`, `pd_lower = PageSize`), not a bag of zeros.
+- [x] Returns a zeroed raw frame — the pool imposes no page-kind formatting; every byte is zero and the access method formats it.
 - [x] Assigns consecutive ids (each call extends the file).
-- [x] Starts dirty — the formatted header lives only in memory until flushed (white-box).
+- [x] Starts clean — a zeroed frame already matches the zero page `AllocatePage` wrote to disk, so there is nothing to flush until the access method formats it and unpins it dirty (white-box).
 - [x] **NumPages** tracks the file growing as pages are allocated (passthrough to the disk manager).
 
 **Dirty lifecycle, eviction & persistence**
@@ -143,7 +144,7 @@ A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU e
 2. PageHeader — establish the table-driven + golden pattern.
 3. SlotEntry — bit packing, independence, error paths.
 4. TupleHeader — 12-byte packed layout.
-5. SlottedPage assembly — value semantics, alias, slot access, `Init`.
+5. SlottedPage assembly — `Page` frame + `AsSlottedPage` view, alias, slot access, `Init`.
 6. Round-trip (black-box).
 7. DiskManager — Open/Close, AllocatePage, Read/Write, concurrency (`-race`), Sync.
 8. LRUReplacer — order and pin/unpin semantics.

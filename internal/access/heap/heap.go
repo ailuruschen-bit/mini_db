@@ -21,8 +21,8 @@ import (
 // whole *buffer.BufferPool — which keeps the dependency small and lets tests
 // substitute a fake that can fail on demand. *buffer.BufferPool satisfies it.
 type pager interface {
-	FetchPage(pid disk.PageID) (*page.SlottedPage, error)
-	NewPage() (*page.SlottedPage, disk.PageID, error)
+	FetchPage(pid disk.PageID) (*page.Page, error)
+	NewPage() (*page.Page, disk.PageID, error)
 	UnpinPage(pid disk.PageID, dirty bool) error
 	NumPages() disk.PageID
 }
@@ -58,11 +58,11 @@ func (h *Heap) Insert(data []byte) (TID, error) {
 	// Try the last existing page first.
 	if n := h.pool.NumPages(); n > 0 {
 		pid := n - 1
-		p, err := h.pool.FetchPage(pid)
+		raw, err := h.pool.FetchPage(pid)
 		if err != nil {
 			return TID{}, fmt.Errorf("heap: insert: %w", err)
 		}
-		slot, err := p.InsertTuple(data)
+		slot, err := page.AsSlottedPage(raw).InsertTuple(data)
 		if err == nil {
 			_ = h.pool.UnpinPage(pid, true)
 			return TID{Page: pid, Slot: slot}, nil
@@ -74,15 +74,22 @@ func (h *Heap) Insert(data []byte) (TID, error) {
 		// The last page is full; fall through to grow the file.
 	}
 
-	// No pages yet, or the last one is full: allocate a fresh page.
-	p, pid, err := h.pool.NewPage()
+	// No pages yet, or the last one is full: allocate a fresh page. The pool
+	// hands back a raw frame, so the heap formats it into a slotted page — and
+	// from that point the page is dirty (its format lives only in memory), so it
+	// is unpinned dirty on both paths, even when the tuple does not fit. That
+	// persists a valid empty page rather than leaving the zero page on disk,
+	// which Scan would later read as an underflowing slot count.
+	raw, pid, err := h.pool.NewPage()
 	if err != nil {
 		return TID{}, fmt.Errorf("heap: insert: %w", err)
 	}
-	slot, err := p.InsertTuple(data)
+	sp := page.AsSlottedPage(raw)
+	sp.Init()
+	slot, err := sp.InsertTuple(data)
 	if err != nil {
 		// An empty page could not fit it, so it is larger than a page allows.
-		_ = h.pool.UnpinPage(pid, false)
+		_ = h.pool.UnpinPage(pid, true)
 		return TID{}, fmt.Errorf("heap: insert: tuple does not fit an empty page: %w", err)
 	}
 	_ = h.pool.UnpinPage(pid, true)
@@ -92,12 +99,13 @@ func (h *Heap) Insert(data []byte) (TID, error) {
 // Get returns a copy of the tuple at tid. The bytes are copied out because the
 // page may be evicted and its frame reused once the tuple is unpinned.
 func (h *Heap) Get(tid TID) ([]byte, error) {
-	p, err := h.pool.FetchPage(tid.Page)
+	raw, err := h.pool.FetchPage(tid.Page)
 	if err != nil {
 		return nil, fmt.Errorf("heap: get %+v: %w", tid, err)
 	}
 	defer func() { _ = h.pool.UnpinPage(tid.Page, false) }()
 
+	p := page.AsSlottedPage(raw)
 	if tid.Slot >= p.SlotCount() {
 		return nil, fmt.Errorf("heap: get %+v: slot out of range [0,%d)", tid, p.SlotCount())
 	}
@@ -114,13 +122,13 @@ func (h *Heap) Get(tid TID) ([]byte, error) {
 // that error, and any I/O error, is returned from Scan.
 func (h *Heap) Scan(fn func(tid TID, data []byte) error) error {
 	for pid := disk.PageID(0); pid < h.pool.NumPages(); pid++ {
-		p, err := h.pool.FetchPage(pid)
+		raw, err := h.pool.FetchPage(pid)
 		if err != nil {
 			return fmt.Errorf("heap: scan page %d: %w", pid, err)
 		}
 		// scanPage runs between fetch and unpin so the page is always released,
 		// even when the callback aborts the scan mid-page.
-		err = scanPage(pid, p, fn)
+		err = scanPage(pid, page.AsSlottedPage(raw), fn)
 		_ = h.pool.UnpinPage(pid, false)
 		if err != nil {
 			return err

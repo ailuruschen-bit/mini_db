@@ -16,8 +16,8 @@ import (
 // eviction, flush and reopen.
 const probeOffset = 100
 
-func writeProbe(p *page.SlottedPage, b byte) { p.Bytes()[probeOffset] = b }
-func readProbe(p *page.SlottedPage) byte      { return p.Bytes()[probeOffset] }
+func writeProbe(p *page.Page, b byte) { p.Bytes()[probeOffset] = b }
+func readProbe(p *page.Page) byte      { return p.Bytes()[probeOffset] }
 
 // mustPool opens a real disk manager over a fresh temp file and wraps it in a
 // pool of the given size. It returns the pool and the file path (so a test can
@@ -67,27 +67,24 @@ func TestFetchReturnsSameInstanceWhileResident(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != p {
-		t.Error("FetchPage returned a different *SlottedPage for a resident page")
+		t.Error("FetchPage returned a different *page.Page for a resident page")
 	}
 	bp.UnpinPage(pid, false)
 }
 
-// NewPage returns a valid, ready-to-use empty page, not a bag of zeros.
-func TestNewPageReturnsFormattedEmptyPage(t *testing.T) {
+// NewPage returns a zeroed raw frame: the pool imposes no page-kind formatting,
+// so every byte is zero and the access method is what formats it.
+func TestNewPageReturnsZeroedFrame(t *testing.T) {
 	bp, _ := mustPool(t, 2)
 
 	p, _, err := bp.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := p.SlotCount(); got != 0 {
-		t.Errorf("SlotCount = %d, want 0", got)
-	}
-	if got := p.Header().PdUpper(); got != page.HeaderSize {
-		t.Errorf("PdUpper = %d, want %d", got, page.HeaderSize)
-	}
-	if got := p.Header().PdLower(); got != page.PageSize {
-		t.Errorf("PdLower = %d, want %d", got, page.PageSize)
+	for i, b := range p.Bytes() {
+		if b != 0 {
+			t.Fatalf("NewPage byte %d = %#x, want 0 (frame must come back blank)", i, b)
+		}
 	}
 }
 

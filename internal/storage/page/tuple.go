@@ -40,7 +40,7 @@ type Tuple struct {
 	data []byte
 }
 
-// NewTuple wraps a byte slice as a tuple view, symmetric with NewSlottedPage.
+// NewTuple wraps a byte slice as a tuple view, symmetric with AsSlottedPage.
 // The record layer uses it to read and write the TupleHeader over a buffer it
 // owns, keeping the 12-byte header layout defined only in this package.
 func NewTuple(data []byte) *Tuple {

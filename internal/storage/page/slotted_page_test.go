@@ -21,24 +21,35 @@ func readTuple(t *testing.T, p *SlottedPage, slot uint16) []byte {
 	return p.LocateTupleByEntry(&e).Bytes()
 }
 
-// NewSlottedPage takes its argument by value, so the page must own a copy of
-// the bytes. A caller mutating its own array afterwards must not be able to
-// reach into the page.
-func TestNewSlottedPageCopiesInput(t *testing.T) {
-	var raw [PageSize]byte
-	raw[0] = 0xAA
-	raw[PageSize-1] = 0xAA
+// NewPage returns a fresh, zero-filled frame that owns its bytes: separate
+// frames never share storage, so a write to one must not reach another.
+func TestNewPageZeroedAndIndependent(t *testing.T) {
+	a, b := NewPage(), NewPage()
 
-	p := NewSlottedPage(raw)
-
-	raw[0] = 0xBB
-	raw[PageSize-1] = 0xBB
-
-	if got := p.data[0]; got != 0xAA {
-		t.Errorf("first byte followed a later mutation of the caller's array: %#x, want 0xAA", got)
+	for i, v := range a.Bytes() {
+		if v != 0 {
+			t.Fatalf("NewPage byte %d = %#x, want 0", i, v)
+		}
 	}
-	if got := p.data[PageSize-1]; got != 0xAA {
-		t.Errorf("last byte followed a later mutation of the caller's array: %#x, want 0xAA", got)
+
+	a.data[0] = 0xAA
+	a.data[PageSize-1] = 0xAA
+	if b.data[0] != 0 || b.data[PageSize-1] != 0 {
+		t.Error("frames share storage: a write to one reached the other")
+	}
+}
+
+// AsSlottedPage overlays a view on a frame without copying: a write through the
+// view reaches the frame's bytes, and any later view observes it.
+func TestAsSlottedPageAliasesFrame(t *testing.T) {
+	raw := NewPage()
+	AsSlottedPage(raw).Header().SetPdUpper(0x1234)
+
+	if got := binary.BigEndian.Uint16(raw.data[14:16]); got != 0x1234 {
+		t.Errorf("write through the view did not reach the frame: raw = %#x", got)
+	}
+	if got := AsSlottedPage(raw).Header().PdUpper(); got != 0x1234 {
+		t.Errorf("a freshly obtained view did not observe the write: %#x", got)
 	}
 }
 
@@ -239,11 +250,11 @@ func TestLocateTupleByEntry(t *testing.T) {
 // arithmetic is well-defined, and no stale bytes left behind. A merely zeroed
 // page would underflow SlotCount, so this pins down the actual pointer values.
 func TestSlottedPageInit(t *testing.T) {
-	var raw [PageSize]byte
-	for i := range raw {
-		raw[i] = 0xFF // simulate leftover bytes from the frame's previous page
+	raw := NewPage()
+	for i := range raw.data {
+		raw.data[i] = 0xFF // simulate leftover bytes from the frame's previous page
 	}
-	p := NewSlottedPage(raw)
+	p := AsSlottedPage(raw)
 
 	p.Init()
 

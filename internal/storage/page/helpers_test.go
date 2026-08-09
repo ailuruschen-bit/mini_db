@@ -2,11 +2,11 @@ package page
 
 import "encoding/binary"
 
-// blankPage returns a heap-allocated, zero-filled page. Because the page lives
-// on the heap and is used through the returned pointer, every view obtained
-// from it (Header, SlotEntry, Tuple) shares the same backing array.
+// blankPage returns a slotted-page view over a fresh, zero-filled frame. Because
+// the frame lives on the heap and is used through the returned view, every view
+// obtained from it (Header, SlotEntry, Tuple) shares the same backing array.
 func blankPage() *SlottedPage {
-	return NewSlottedPage([PageSize]byte{})
+	return AsSlottedPage(NewPage())
 }
 
 // blankSlotEntry returns a standalone, zero-filled slot entry. Bit-packing can

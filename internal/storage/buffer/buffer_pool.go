@@ -81,8 +81,8 @@ type frameMeta struct {
 type BufferPool struct {
 	disk diskManager
 
-	frames []*page.SlottedPage // frames[i] is the memory slot for frame i
-	meta   []frameMeta         // meta[i] describes frames[i]
+	frames []*page.Page // frames[i] is the memory slot for frame i
+	meta   []frameMeta  // meta[i] describes frames[i]
 
 	pageTable map[disk.PageID]frameID // resident page id -> its frame
 	freeList  []frameID               // frames holding no page, free to fill
@@ -105,10 +105,10 @@ func NewBufferPool(dm diskManager, poolSize int) *BufferPool {
 		panic(fmt.Sprintf("buffer: pool size must be positive, got %d", poolSize))
 	}
 
-	frames := make([]*page.SlottedPage, poolSize)
+	frames := make([]*page.Page, poolSize)
 	freeList := make([]frameID, poolSize)
 	for i := range frames {
-		frames[i] = page.NewSlottedPage([page.PageSize]byte{})
+		frames[i] = page.NewPage()
 		freeList[i] = frameID(i)
 	}
 
@@ -130,8 +130,9 @@ func NewBufferPool(dm diskManager, poolSize int) *BufferPool {
 //
 // The returned pointer is valid only until the matching UnpinPage: once
 // unpinned the frame may be reused for another page, so callers must not retain
-// it past that point.
-func (bp *BufferPool) FetchPage(pid disk.PageID) (*page.SlottedPage, error) {
+// it past that point. It is a raw frame; the caller overlays its own view
+// (page.AsSlottedPage, a B+Tree node, ...) to interpret the bytes.
+func (bp *BufferPool) FetchPage(pid disk.PageID) (*page.Page, error) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 
@@ -163,14 +164,21 @@ func (bp *BufferPool) FetchPage(pid disk.PageID) (*page.SlottedPage, error) {
 }
 
 // NewPage allocates a brand-new page on disk, loads it into a frame pinned to
-// the caller, and returns it together with its id. Like FetchPage, the page is
-// pinned until UnpinPage and returns ErrNoFreeFrame when no frame can be freed.
+// the caller, and returns the raw frame together with its id. Like FetchPage,
+// the page is pinned until UnpinPage and returns ErrNoFreeFrame when no frame
+// can be freed.
 //
 // A frame is acquired before the disk page is allocated, on purpose: acquiring
 // can fail (pool full) and undoes cleanly, whereas AllocatePage grows the file
 // and cannot be undone in v1. Doing the reversible step first means a full pool
 // never leaks an unreferenced page on disk.
-func (bp *BufferPool) NewPage() (*page.SlottedPage, disk.PageID, error) {
+//
+// The returned frame is zeroed but NOT formatted into any page kind: matching
+// the zero page AllocatePage wrote to disk, it is returned clean. Formatting it
+// (page.AsSlottedPage(...).Init, a B+Tree node header, ...) belongs to the
+// access method, which must then unpin it dirty so the format reaches disk — a
+// layout-agnostic pool imposes no page structure of its own.
+func (bp *BufferPool) NewPage() (*page.Page, disk.PageID, error) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 
@@ -185,19 +193,13 @@ func (bp *BufferPool) NewPage() (*page.SlottedPage, disk.PageID, error) {
 		return nil, 0, fmt.Errorf("buffer: allocate page: %w", err)
 	}
 
-	// Format the frame into a valid empty page in memory. AllocatePage wrote a
-	// zero page to disk, but a zeroed page is not a usable SlottedPage (pd_upper
-	// would be 0 and SlotCount would underflow), so Init sets the boundary
-	// pointers. Init also clears any bytes left by the frame's previous occupant,
-	// so no reading back from disk is needed.
-	bp.frames[f].Init()
+	// Clear any bytes left by the frame's previous occupant so the caller sees a
+	// blank frame, matching the zero page AllocatePage wrote to disk. Memory and
+	// disk now agree, so the frame is bound clean; the access method's formatting
+	// is what makes it dirty (via UnpinPage).
+	clear(bp.frames[f].Bytes())
 
 	bp.bindFrame(f, pid)
-	// The formatted header lives only in memory; disk still holds the zero page
-	// AllocatePage wrote. Mark the page dirty so the format reaches disk on
-	// flush — a clean eviction would otherwise drop it, leaving an invalid zero
-	// page on disk.
-	bp.meta[f].dirty = true
 	return bp.frames[f], pid, nil
 }
 

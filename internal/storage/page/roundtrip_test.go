@@ -88,7 +88,7 @@ func TestPageRoundTripThroughBytes(t *testing.T) {
 		}
 	}
 
-	pg := page.NewSlottedPage([page.PageSize]byte{})
+	pg := page.AsSlottedPage(page.NewPage())
 
 	h := pg.Header()
 	h.SetPdLsn(0x0102030405060708)
@@ -120,7 +120,9 @@ func TestPageRoundTripThroughBytes(t *testing.T) {
 	th.SetHoff(13)
 
 	// --- out and back in ---
-	rebuilt := page.NewSlottedPage([page.PageSize]byte(pg.Bytes()))
+	rawRebuilt := page.NewPage()
+	copy(rawRebuilt.Bytes(), pg.Bytes())
+	rebuilt := page.AsSlottedPage(rawRebuilt)
 
 	if !bytes.Equal(pg.Bytes(), rebuilt.Bytes()) {
 		t.Fatal("rebuilt page is not byte-identical to the original")
@@ -130,13 +132,15 @@ func TestPageRoundTripThroughBytes(t *testing.T) {
 	}
 }
 
-// A page rebuilt from bytes must be independent of the original: NewSlottedPage
-// copies, so mutating one must not disturb the other.
+// A page rebuilt from bytes must be independent of the original: each frame owns
+// its bytes, so mutating one must not disturb the other.
 func TestRebuiltPageIsIndependent(t *testing.T) {
-	pg := page.NewSlottedPage([page.PageSize]byte{})
+	pg := page.AsSlottedPage(page.NewPage())
 	pg.Header().SetPdSpecial(0x1111)
 
-	rebuilt := page.NewSlottedPage([page.PageSize]byte(pg.Bytes()))
+	rawRebuilt := page.NewPage()
+	copy(rawRebuilt.Bytes(), pg.Bytes())
+	rebuilt := page.AsSlottedPage(rawRebuilt)
 	rebuilt.Header().SetPdSpecial(0x2222)
 
 	if got := pg.Header().PdSpecial(); got != 0x1111 {

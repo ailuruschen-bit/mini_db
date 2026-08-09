@@ -34,24 +34,25 @@ func payload(seed, size int) []byte {
 	return p
 }
 
-// initPage returns a formatted empty page, for building fakePool states.
-func initPage() *page.SlottedPage {
-	p := page.NewSlottedPage([page.PageSize]byte{})
-	p.Init()
-	return p
+// initPage returns a frame already formatted as an empty slotted page — an
+// "existing" heap page — for building fakePool states.
+func initPage() *page.Page {
+	raw := page.NewPage()
+	page.AsSlottedPage(raw).Init()
+	return raw
 }
 
 // fakePool is a pager that fails FetchPage/NewPage on demand, driving the heap's
 // I/O error paths a healthy disk cannot reach.
 type fakePool struct {
-	pages     []*page.SlottedPage
+	pages     []*page.Page
 	failFetch bool
 	failNew   bool
 }
 
 func (f *fakePool) NumPages() disk.PageID { return disk.PageID(len(f.pages)) }
 
-func (f *fakePool) FetchPage(pid disk.PageID) (*page.SlottedPage, error) {
+func (f *fakePool) FetchPage(pid disk.PageID) (*page.Page, error) {
 	if f.failFetch {
 		return nil, errors.New("fakePool: fetch failed")
 	}
@@ -61,13 +62,15 @@ func (f *fakePool) FetchPage(pid disk.PageID) (*page.SlottedPage, error) {
 	return f.pages[pid], nil
 }
 
-func (f *fakePool) NewPage() (*page.SlottedPage, disk.PageID, error) {
+func (f *fakePool) NewPage() (*page.Page, disk.PageID, error) {
 	if f.failNew {
 		return nil, 0, errors.New("fakePool: newpage failed")
 	}
-	p := initPage()
-	f.pages = append(f.pages, p)
-	return p, disk.PageID(len(f.pages) - 1), nil
+	// Mimic the real pool: hand back a raw, unformatted frame. The heap formats
+	// it (Init) before use.
+	raw := page.NewPage()
+	f.pages = append(f.pages, raw)
+	return raw, disk.PageID(len(f.pages) - 1), nil
 }
 
 func (f *fakePool) UnpinPage(_ disk.PageID, _ bool) error { return nil }
@@ -211,7 +214,7 @@ func TestInsertTooLarge(t *testing.T) {
 
 // Insert surfaces a FetchPage failure on the last page.
 func TestInsertFetchError(t *testing.T) {
-	fp := &fakePool{pages: []*page.SlottedPage{initPage()}, failFetch: true}
+	fp := &fakePool{pages: []*page.Page{initPage()}, failFetch: true}
 	if _, err := heap.NewHeap(fp).Insert([]byte("x")); err == nil {
 		t.Error("Insert did not surface the FetchPage failure")
 	}
@@ -229,8 +232,9 @@ func TestInsertNewPageError(t *testing.T) {
 // for "page full".
 func TestInsertUnexpectedPageError(t *testing.T) {
 	corrupt := initPage()
-	corrupt.Header().SetPdLower(40000) // makes InsertTuple overflow the slot offset
-	fp := &fakePool{pages: []*page.SlottedPage{corrupt}}
+	// Corrupt the page so InsertTuple overflows the slot offset.
+	page.AsSlottedPage(corrupt).Header().SetPdLower(40000)
+	fp := &fakePool{pages: []*page.Page{corrupt}}
 	if _, err := heap.NewHeap(fp).Insert([]byte("x")); err == nil {
 		t.Error("Insert did not surface an unexpected page error")
 	}
@@ -238,7 +242,7 @@ func TestInsertUnexpectedPageError(t *testing.T) {
 
 // Scan surfaces a FetchPage failure.
 func TestScanFetchError(t *testing.T) {
-	fp := &fakePool{pages: []*page.SlottedPage{initPage()}, failFetch: true}
+	fp := &fakePool{pages: []*page.Page{initPage()}, failFetch: true}
 	err := heap.NewHeap(fp).Scan(func(_ heap.TID, _ []byte) error { return nil })
 	if err == nil {
 		t.Error("Scan did not surface the FetchPage failure")

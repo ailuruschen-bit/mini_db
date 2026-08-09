@@ -147,17 +147,18 @@ func TestFetchAndPinAccounting(t *testing.T) {
 	}
 }
 
-// A freshly formatted new page is dirty: its header lives only in memory until
-// flushed, so a clean eviction must not silently drop it.
-func TestNewPageIsDirty(t *testing.T) {
+// A new page starts clean: the pool returns a zeroed frame that already matches
+// the zero page AllocatePage wrote to disk, so there is nothing to flush until
+// the access method formats it and unpins it dirty.
+func TestNewPageStartsClean(t *testing.T) {
 	bp := NewBufferPool(newFakeDisk(), 2)
 
 	_, pid, err := bp.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := frameOf(t, bp, pid); !bp.meta[f].dirty {
-		t.Error("a new page must start dirty")
+	if f := frameOf(t, bp, pid); bp.meta[f].dirty {
+		t.Error("a new page must start clean (memory matches the zero page on disk)")
 	}
 }
 
@@ -241,10 +242,12 @@ func TestFlushWriteFailurePropagates(t *testing.T) {
 	fd := newFakeDisk()
 	bp := NewBufferPool(fd, 2)
 
-	_, pid, err := bp.NewPage() // dirty and resident
+	_, pid, err := bp.NewPage() // resident
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A new page starts clean; dirty it so the flush actually attempts a write.
+	bp.meta[frameOf(t, bp, pid)].dirty = true
 	fd.failWrite = func(id disk.PageID) error {
 		if id == pid {
 			return fmt.Errorf("injected write failure")

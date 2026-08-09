@@ -26,15 +26,54 @@ type noCopy struct{}
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
 
-// === SlottedPage Define ===
+// === Page Define ===
 //
-// SlottedPage owns an 8KB backing array; Header()/SlotEntryAt()/Tuple all hand
-// out views into that array. Copying a SlottedPage by value would
-// detach those views from the copy, so it must only be passed by pointer.
-// The embedded noCopy makes `go vet` flag any accidental value copy.
-type SlottedPage struct {
+// Page is a raw 8KB page frame: the unit the buffer pool stores and reuses. It
+// carries no interpretation of its bytes — an access method overlays a view
+// (AsSlottedPage here, a B+Tree node in the index layer, ...) to read and write
+// structured content. Keeping the frame layout-agnostic is what lets one buffer
+// pool back files of different page kinds.
+//
+// Page owns its backing array inline, so copying a Page by value would detach
+// every view taken from the original; the embedded noCopy makes `go vet` flag
+// any accidental value copy. Always pass it by pointer.
+type Page struct {
 	_    noCopy
 	data [PageSize]byte
+}
+
+// NewPage returns a fresh, zeroed page frame. It is not formatted into any page
+// kind: the access method that takes it (via AsSlottedPage, Init, ...) is
+// responsible for formatting it before use.
+func NewPage() *Page {
+	return &Page{}
+}
+
+// Bytes exposes the frame's raw storage so it can be handed to the disk layer
+// (disk.ReadPage/WritePage into p.Bytes()). It returns a view, not a copy: the
+// slice aliases the frame's backing array. Use it for I/O.
+func (p *Page) Bytes() []byte {
+	return p.data[:]
+}
+
+// === SlottedPage Define ===
+//
+// SlottedPage is a slotted-page view over a raw Page frame: it holds a pointer
+// to the frame's backing array and its accessors (Header/SlotEntryAt/Tuple) read
+// and write through that array in place. It copies nothing, so it is valid only
+// while the underlying frame is pinned. Build one with AsSlottedPage.
+//
+// Being a pointer view, copying a SlottedPage by value is harmless — the copy
+// aliases the same frame — so it needs no noCopy guard.
+type SlottedPage struct {
+	data *[PageSize]byte
+}
+
+// AsSlottedPage overlays the slotted-page accessors on a raw frame without
+// copying: the returned view aliases p's bytes. A brand-new frame must be
+// formatted with Init before tuples can be inserted or counted.
+func AsSlottedPage(p *Page) *SlottedPage {
+	return &SlottedPage{&p.data}
 }
 
 // --- Core Function ---
@@ -92,19 +131,12 @@ func (p *SlottedPage) LocateTupleByEntry(entry *SlotEntry) *Tuple {
 	return &Tuple{p.data[entry.Offset() : entry.Offset()+entry.Length()]}
 }
 
-// Bytes exposes the page's raw storage so it can be handed to the disk layer,
-// e.g. file.WriteAt(p.Bytes(), int64(pageID)*int64(PageSize)).
-//
-// It returns a view, not a copy: the slice aliases the page's backing array, so
-// writing through it mutates the page and bypasses every accessor in this
-// package. Use it for I/O, not as a general escape hatch.
+// Bytes exposes the underlying frame's raw storage as a view (not a copy): the
+// slice aliases the frame's backing array, so writing through it mutates the
+// page and bypasses every accessor in this package. It is the same storage as
+// the source Page's Bytes; use it for I/O, not as a general escape hatch.
 func (p *SlottedPage) Bytes() []byte {
 	return p.data[:]
-}
-
-// --- Tool Function ---
-func NewSlottedPage(data [PageSize]byte) *SlottedPage {
-	return &SlottedPage{data: data}
 }
 
 // Init formats the page as a valid, ready-to-use empty page: it zeroes the

@@ -56,14 +56,16 @@ heap は具体型 `*buffer.BufferPool` ではなく、小さな消費者側イ�
 
 ```go
 type pager interface {
-    FetchPage(pid disk.PageID) (*page.SlottedPage, error)
-    NewPage() (*page.SlottedPage, disk.PageID, error)
+    FetchPage(pid disk.PageID) (*page.Page, error)
+    NewPage() (*page.Page, disk.PageID, error)
     UnpinPage(pid disk.PageID, dirty bool) error
     NumPages() disk.PageID
 }
 ```
 
 実装ではなく能力（ページを供給するもの）に因んだ名前。結合を小さく保ち、テストがオンデマンドで失敗するフェイクプールを差し込め、将来別のページ供給元の余地も残す。`*buffer.BufferPool` がこれを満たす。
+
+プールが供給するのは **生フレーム**（`*page.Page`）である。8 KB のバイト列を所有するが、レイアウトは押し付けない。heap は `page.AsSlottedPage(raw)`（ゼロコピーのビュー）で自分の解釈を被せる。こうしてバッファプールは異なる種類のページのファイル（ここでは heap ファイル、後には B+Tree インデックスファイル）を同一のまま扱える。`NewPage` はゼロ初期化された未フォーマットのフレームを返し、heap が `Init` で整形する。その整形はメモリ上にしか存在しないため dirty にして unpin し、ディスクへ届ける — タプルが大きすぎて入らない場合でも同様で、後の `Scan` が誤読する未フォーマットのページをファイルに残さない。
 
 ---
 

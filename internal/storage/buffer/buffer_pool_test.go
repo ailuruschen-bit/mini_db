@@ -265,6 +265,25 @@ func TestPoolFullReturnsErrNoFreeFrame(t *testing.T) {
 	}
 }
 
+// NumPages tracks the file growing as pages are allocated.
+func TestNumPagesReflectsAllocation(t *testing.T) {
+	bp, _ := mustPool(t, 4)
+
+	if got := bp.NumPages(); got != 0 {
+		t.Errorf("NumPages on a fresh pool = %d, want 0", got)
+	}
+	for want := disk.PageID(1); want <= 3; want++ {
+		_, pid, err := bp.NewPage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bp.NumPages(); got != want {
+			t.Errorf("NumPages after %d allocations = %d, want %d", want, got, want)
+		}
+		bp.UnpinPage(pid, false)
+	}
+}
+
 // The full durability path: create pages, flush, sync, close, reopen, read back.
 func TestPersistenceAcrossReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "buf.db")

@@ -60,6 +60,8 @@ func (d *fakeDisk) AllocatePage() (disk.PageID, error) {
 	return id, nil
 }
 
+func (d *fakeDisk) NumPages() disk.PageID { return disk.PageID(len(d.pages)) }
+
 func (d *fakeDisk) Sync() error { return nil }
 
 // frameOf returns the frame currently holding pid, failing if it is not resident.

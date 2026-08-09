@@ -24,6 +24,7 @@ type diskManager interface {
 	ReadPage(id disk.PageID, dst []byte) error
 	WritePage(id disk.PageID, src []byte) error
 	AllocatePage() (disk.PageID, error)
+	NumPages() disk.PageID
 	Sync() error
 }
 
@@ -291,6 +292,13 @@ func (bp *BufferPool) FlushAll() error {
 // safe without one, so a slow fsync does not block concurrent page traffic.
 func (bp *BufferPool) Sync() error {
 	return bp.disk.Sync()
+}
+
+// NumPages reports how many pages the underlying file holds; valid page ids are
+// [0, NumPages). It is a read-only passthrough to the disk manager, which guards
+// the count with its own lock, so it takes no pool lock.
+func (bp *BufferPool) NumPages() disk.PageID {
+	return bp.disk.NumPages()
 }
 
 // flushLocked writes frame f back to disk when it is dirty and clears the flag.

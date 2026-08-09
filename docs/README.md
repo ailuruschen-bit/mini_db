@@ -22,6 +22,8 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
   - [Physical Storage Design](design/storage/Physical-Storage-Design.md)
 - **Access**
   - [Heap Access Method Design](design/access/Heap-Design.md)
+- **Record**
+  - [Record Encoding Design](design/record/Record-Encoding-Design.md)
 
 ### Testing
 - [Test Conventions](testing/Test-Conventions.md) — global rules for all modules
@@ -29,3 +31,5 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
   - [Storage Module Test Plan](testing/storage/Storage-Test-Plan.md)
 - **Access**
   - [Access Module Test Plan](testing/access/Access-Test-Plan.md)
+- **Record**
+  - [Record Module Test Plan](testing/record/Record-Test-Plan.md)

@@ -22,6 +22,8 @@
   - [物理ストレージ設計仕様書](design/storage/Physical-Storage-Design.ja.md)
 - **アクセス**
   - [ヒープアクセスメソッド設計](design/access/Heap-Design.ja.md)
+- **レコード**
+  - [レコードエンコード設計](design/record/Record-Encoding-Design.ja.md)
 
 ### テスト
 - [テスト規約](testing/Test-Conventions.ja.md) — 全モジュール共通のルール
@@ -29,3 +31,5 @@
   - [ストレージモジュール テスト計画](testing/storage/Storage-Test-Plan.ja.md)
 - **アクセス**
   - [アクセスモジュール テスト計画](testing/access/Access-Test-Plan.ja.md)
+- **レコード**
+  - [レコードモジュール テスト計画](testing/record/Record-Test-Plan.ja.md)

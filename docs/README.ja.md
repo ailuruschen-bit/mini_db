@@ -20,6 +20,8 @@
 ### 設計
 - **ストレージ**
   - [物理ストレージ設計仕様書](design/storage/Physical-Storage-Design.ja.md)
+- **アクセス**
+  - [ヒープアクセスメソッド設計](design/access/Heap-Design.ja.md)
 
 ### テスト
 - [テスト規約](testing/Test-Conventions.ja.md) — 全モジュール共通のルール

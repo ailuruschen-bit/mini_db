@@ -218,3 +218,13 @@ func TestTupleHeaderViewAliasesTuple(t *testing.T) {
 		}
 	}
 }
+
+// NewTuple wraps the given bytes (aliases, not copies): a header write through
+// the wrapper reaches the buffer.
+func TestNewTuple(t *testing.T) {
+	buf := make([]byte, TupleHeaderSize)
+	NewTuple(buf).TupleHeader().SetHoff(12)
+	if buf[10] != 12 {
+		t.Errorf("NewTuple's header did not write through to the buffer: byte[10]=%d, want 12", buf[10])
+	}
+}

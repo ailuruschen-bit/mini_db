@@ -22,6 +22,7 @@
   - [物理ストレージ設計仕様書](design/storage/Physical-Storage-Design.ja.md)
 - **アクセス**
   - [ヒープアクセスメソッド設計](design/access/Heap-Design.ja.md)
+  - [B+Tree インデックス設計](design/access/BTree-Index-Design.ja.md)
 - **レコード**
   - [レコードエンコード設計](design/record/Record-Encoding-Design.ja.md)
 

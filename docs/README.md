@@ -22,6 +22,7 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
   - [Physical Storage Design](design/storage/Physical-Storage-Design.md)
 - **Access**
   - [Heap Access Method Design](design/access/Heap-Design.md)
+  - [B+Tree Index Design](design/access/BTree-Index-Design.md)
 - **Record**
   - [Record Encoding Design](design/record/Record-Encoding-Design.md)
 

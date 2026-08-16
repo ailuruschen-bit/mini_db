@@ -27,7 +27,7 @@ func newTree(t *testing.T, poolSize int) *nbtree.BTree {
 		t.Fatalf("open disk: %v", err)
 	}
 	t.Cleanup(func() { _ = dm.Close() })
-	tr, err := nbtree.NewBTree(buffer.NewBufferPool(dm, poolSize))
+	tr, err := nbtree.NewBTree(buffer.NewBufferPool(poolSize).Register(dm))
 	if err != nil {
 		t.Fatalf("new btree: %v", err)
 	}
@@ -87,8 +87,8 @@ func TestPersistAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool1 := buffer.NewBufferPool(dm1, 16)
-	tr1, err := nbtree.NewBTree(pool1)
+	pool1 := buffer.NewBufferPool(16)
+	tr1, err := nbtree.NewBTree(pool1.Register(dm1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestPersistAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = dm2.Close() }()
-	tr2, err := nbtree.NewBTree(buffer.NewBufferPool(dm2, 16))
+	tr2, err := nbtree.NewBTree(buffer.NewBufferPool(16).Register(dm2))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}

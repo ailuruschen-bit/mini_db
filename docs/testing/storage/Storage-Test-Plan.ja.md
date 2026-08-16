@@ -18,7 +18,7 @@
 
 **disk**（`disk_test.go`）: `tempDBPath`、`writeZeroPages`、`fileSize`、`filledPage(b)`、`mustOpen`。
 
-**buffer**: `probeOffset` + `writeProbe`/`readProbe`（識別可能なボディバイト）、`mustPool`（一時ファイル上の実ディスク）、`readProbeFromDisk`（プールを介さずファイルから直接ページを読む）、そして `fakeDisk` — `ReadPage`/`WritePage`/`AllocatePage` をオンデマンドで失敗させられるインメモリの `diskManager`。プールのエラー回復経路を決定論的に駆動するために使う。
+**buffer**: `probeOffset` + `writeProbe`/`readProbe`（識別可能なボディバイト）、`mustPool`（実ディスクのプール + 登録済み `FileHandle` + パス）、`newPool`（ホワイトボックス: プール + `fakeDisk` + そのハンドル）、`readProbeFromDisk`（プールを介さずファイルから直接ページを読む）、そして `fakeDisk` — `ReadPage`/`WritePage`/`AllocatePage`/`Sync` をオンデマンドで失敗させられるインメモリの `diskManager`。プールのエラー回復経路を決定論的に駆動するために使う。
 
 ---
 
@@ -95,12 +95,13 @@
 
 ## 8. BufferPool（`buffer_pool_test.go` ブラックボックス `buffer_test`、`buffer_pool_internal_test.go` ホワイトボックス）
 
-ディスクページをキャッシュする固定数のフレーム。pin カウント、dirty フラグ、LRU 追い出し、flush/sync を持つ。v1 は全メタデータを 1 本のロックで守り、ディスク I/O をまたいで保持する; ページの*内容*はロックで守られないため、並行テストはページ所有権を分割する。
+**登録された全ファイル**にわたってディスクページをキャッシュする固定数のフレーム。pin カウント、dirty フラグ、LRU 追い出し、flush/sync を持つ。ファイルは `Register` で登録し、1 ファイルの id を束ねて単一ファイルのページ API を提供する `FileHandle` を返す（heap/nbtree はそのまま消費）; プールはページを `{file, page}` でキーする。v1 は全メタデータを 1 本のロックで守り、ディスク I/O をまたいで保持する; ページの*内容*はロックで守られないため、並行テストはページ所有権を分割する。
 
-**構築（ホワイトボックス）**
+**構築・複数ファイル（ホワイトボックス）**
 
 - [x] 非正のプールサイズは panic する。
 - [x] 新品のプールは全フレームがフリーリストにあり、常駐も追い出し候補もない。
+- [x] 2 つの異なるファイルの同じページ id は 2 つの異なるフレームを占める（`{file, page}` キーがファイル同士の衝突を防ぐ）; `pageTable` はファイルごとに 1 エントリを持つ。
 
 **Fetch と pin**
 
@@ -122,6 +123,7 @@
 - [x] `FlushPage` は追い出さずに dirty ページのバイトをディスクへ押し出す; 既に clean なページの 2 度目の flush は no-op。
 - [x] `dirty` は sticky: 後の clean な unpin が、先の保持者が報告した変更を消さない。
 - [x] **再オープンの総仕上げ:** ページを作成しプローブを書き、`FlushAll`・`Sync`・close; ファイルを再オープンして全プローブを読み戻す。
+- [x] **2 ファイルが独立に永続化:** 1 つの共有プールに登録した 2 ファイルが、`FlushAll`/`Sync`/再オープンをまたいで各自のページ内容を保つ（`{file, page}` キーがディスク上でも両者を分ける）。
 
 **エラーパス（大半は `fakeDisk` によるホワイトボックス）**
 
@@ -131,6 +133,7 @@
 - [x] `AllocatePage` の失敗は取得済みフレームをフリーリストへ戻す; プールは回復する。
 - [x] ページロード（フェーズ B）の失敗は取得済みフレームをフリーリストへ戻す。
 - [x] flush 中の書き込みエラーは `FlushPage` と `FlushAll` から伝播する; ページは再試行のため dirty のまま。
+- [x] 登録されたいずれかのファイルの `Sync` 失敗が `Sync` から伝播する。
 
 **並行性（`-race`）**
 

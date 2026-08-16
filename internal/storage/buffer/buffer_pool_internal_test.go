@@ -19,6 +19,7 @@ type fakeDisk struct {
 	failRead  func(id disk.PageID) error
 	failWrite func(id disk.PageID) error
 	failAlloc func() error
+	failSync  func() error
 }
 
 func newFakeDisk() *fakeDisk { return &fakeDisk{} }
@@ -62,14 +63,29 @@ func (d *fakeDisk) AllocatePage() (disk.PageID, error) {
 
 func (d *fakeDisk) NumPages() disk.PageID { return disk.PageID(len(d.pages)) }
 
-func (d *fakeDisk) Sync() error { return nil }
+func (d *fakeDisk) Sync() error {
+	if d.failSync != nil {
+		return d.failSync()
+	}
+	return nil
+}
 
-// frameOf returns the frame currently holding pid, failing if it is not resident.
-func frameOf(t *testing.T, bp *BufferPool, pid disk.PageID) frameID {
+// newPool builds a pool of the given size with one fakeDisk registered, and
+// returns the pool, that disk (for injecting failures), and its handle.
+func newPool(size int) (*BufferPool, *fakeDisk, *FileHandle) {
+	fd := newFakeDisk()
+	bp := NewBufferPool(size)
+	return bp, fd, bp.Register(fd)
+}
+
+// frameOf returns the frame holding pid in the handle's file, failing if it is
+// not resident.
+func frameOf(t *testing.T, h *FileHandle, pid disk.PageID) frameID {
 	t.Helper()
-	f, ok := bp.pageTable[pid]
+	key := pageKey{h.file, pid}
+	f, ok := h.pool.pageTable[key]
 	if !ok {
-		t.Fatalf("page %d is not resident", pid)
+		t.Fatalf("%s is not resident", key)
 	}
 	return f
 }
@@ -83,7 +99,7 @@ func TestNewBufferPoolPanicsOnBadSize(t *testing.T) {
 					t.Errorf("NewBufferPool(%d) did not panic", size)
 				}
 			}()
-			NewBufferPool(newFakeDisk(), size)
+			NewBufferPool(size)
 		})
 	}
 }
@@ -91,7 +107,7 @@ func TestNewBufferPoolPanicsOnBadSize(t *testing.T) {
 // A fresh pool has every frame free and nothing resident or evictable.
 func TestNewBufferPoolStartsAllFree(t *testing.T) {
 	const size = 4
-	bp := NewBufferPool(newFakeDisk(), size)
+	bp := NewBufferPool(size)
 
 	if got := len(bp.freeList); got != size {
 		t.Errorf("freeList size = %d, want %d", got, size)
@@ -104,16 +120,51 @@ func TestNewBufferPoolStartsAllFree(t *testing.T) {
 	}
 }
 
-// Pin count rises on each fetch and falls on each unpin; a frame is an eviction
-// candidate only at zero.
-func TestFetchAndPinAccounting(t *testing.T) {
-	bp := NewBufferPool(newFakeDisk(), 3)
+// The same page id in two different files occupies two different frames: the
+// pool keys pages by {file, pid}, so the files never collide.
+func TestTwoFilesKeepPagesDistinct(t *testing.T) {
+	bp := NewBufferPool(4)
+	a := bp.Register(newFakeDisk())
+	b := bp.Register(newFakeDisk())
 
-	_, pid, err := bp.NewPage()
+	pa, pidA, err := a.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := frameOf(t, bp, pid)
+	pb, pidB, err := b.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pidA != pidB {
+		t.Fatalf("both files should start at pid 0, got %d and %d", pidA, pidB)
+	}
+	if pa == pb {
+		t.Fatal("same pid in two files must occupy different frames")
+	}
+
+	pa.Bytes()[0] = 0xAA
+	pb.Bytes()[0] = 0xBB
+	if pa.Bytes()[0] != 0xAA || pb.Bytes()[0] != 0xBB {
+		t.Error("writes to same-pid pages in different files collided")
+	}
+	if got := len(bp.pageTable); got != 2 {
+		t.Errorf("pageTable has %d entries, want 2 (one per file)", got)
+	}
+
+	_ = a.UnpinPage(pidA, true)
+	_ = b.UnpinPage(pidB, true)
+}
+
+// Pin count rises on each fetch and falls on each unpin; a frame is an eviction
+// candidate only at zero.
+func TestFetchAndPinAccounting(t *testing.T) {
+	bp, _, h := newPool(3)
+
+	_, pid, err := h.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := frameOf(t, h, pid)
 
 	if got := bp.meta[f].pinCount; got != 1 {
 		t.Errorf("pinCount after NewPage = %d, want 1", got)
@@ -122,21 +173,21 @@ func TestFetchAndPinAccounting(t *testing.T) {
 		t.Errorf("a pinned page must not be evictable: replacer size = %d, want 0", got)
 	}
 
-	if _, err := bp.FetchPage(pid); err != nil { // second holder, same frame
+	if _, err := h.FetchPage(pid); err != nil { // second holder, same frame
 		t.Fatal(err)
 	}
 	if got := bp.meta[f].pinCount; got != 2 {
 		t.Errorf("pinCount after second fetch = %d, want 2", got)
 	}
 
-	if err := bp.UnpinPage(pid, false); err != nil {
+	if err := h.UnpinPage(pid, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := bp.replacer.Size(); got != 0 {
 		t.Errorf("still pinned once: replacer size = %d, want 0", got)
 	}
 
-	if err := bp.UnpinPage(pid, false); err != nil {
+	if err := h.UnpinPage(pid, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := bp.meta[f].pinCount; got != 0 {
@@ -151,13 +202,13 @@ func TestFetchAndPinAccounting(t *testing.T) {
 // the zero page AllocatePage wrote to disk, so there is nothing to flush until
 // the access method formats it and unpins it dirty.
 func TestNewPageStartsClean(t *testing.T) {
-	bp := NewBufferPool(newFakeDisk(), 2)
+	bp, _, h := newPool(2)
 
-	_, pid, err := bp.NewPage()
+	_, pid, err := h.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := frameOf(t, bp, pid); bp.meta[f].dirty {
+	if f := frameOf(t, h, pid); bp.meta[f].dirty {
 		t.Error("a new page must start clean (memory matches the zero page on disk)")
 	}
 }
@@ -165,14 +216,13 @@ func TestNewPageStartsClean(t *testing.T) {
 // A failed write-back of a dirty victim must leave the pool exactly as it was:
 // the victim stays resident, dirty, and evictable; no frame is leaked.
 func TestEvictionWriteBackFailureRestoresPool(t *testing.T) {
-	fd := newFakeDisk()
-	bp := NewBufferPool(fd, 1) // one frame: any second page forces an eviction
+	bp, fd, h := newPool(1) // one frame: any second page forces an eviction
 
-	_, pid0, err := bp.NewPage()
+	_, pid0, err := h.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := bp.UnpinPage(pid0, true); err != nil { // sole candidate, dirty
+	if err := h.UnpinPage(pid0, true); err != nil { // sole candidate, dirty
 		t.Fatal(err)
 	}
 
@@ -182,11 +232,11 @@ func TestEvictionWriteBackFailureRestoresPool(t *testing.T) {
 		}
 		return nil
 	}
-	if _, _, err := bp.NewPage(); err == nil {
+	if _, _, err := h.NewPage(); err == nil {
 		t.Fatal("NewPage succeeded despite a failing victim write-back")
 	}
 
-	f := frameOf(t, bp, pid0)
+	f := frameOf(t, h, pid0)
 	if !bp.meta[f].dirty {
 		t.Error("victim lost its dirty flag after a failed flush")
 	}
@@ -201,11 +251,10 @@ func TestEvictionWriteBackFailureRestoresPool(t *testing.T) {
 // A failed AllocatePage must return the acquired frame to the free list, and
 // the pool must keep working once allocation recovers.
 func TestNewPageAllocateFailureReturnsFrame(t *testing.T) {
-	fd := newFakeDisk()
-	bp := NewBufferPool(fd, 2)
+	bp, fd, h := newPool(2)
 
 	fd.failAlloc = func() error { return fmt.Errorf("injected alloc failure") }
-	if _, _, err := bp.NewPage(); err == nil {
+	if _, _, err := h.NewPage(); err == nil {
 		t.Fatal("NewPage succeeded despite a failing AllocatePage")
 	}
 	if got := len(bp.freeList); got != 2 {
@@ -216,7 +265,7 @@ func TestNewPageAllocateFailureReturnsFrame(t *testing.T) {
 	}
 
 	fd.failAlloc = nil
-	if _, _, err := bp.NewPage(); err != nil {
+	if _, _, err := h.NewPage(); err != nil {
 		t.Errorf("NewPage after recovery: %v", err)
 	}
 }
@@ -224,14 +273,13 @@ func TestNewPageAllocateFailureReturnsFrame(t *testing.T) {
 // A miss with every frame pinned has nowhere to load into: FetchPage surfaces
 // ErrNoFreeFrame, just like NewPage.
 func TestFetchOnFullPoolReturnsErrNoFreeFrame(t *testing.T) {
-	fd := newFakeDisk()
+	_, fd, h := newPool(1) // one frame
 	fd.pages = [][]byte{make([]byte, page.PageSize), make([]byte, page.PageSize)}
-	bp := NewBufferPool(fd, 1) // one frame
 
-	if _, err := bp.FetchPage(0); err != nil { // loads and pins page 0
+	if _, err := h.FetchPage(0); err != nil { // loads and pins page 0
 		t.Fatal(err)
 	}
-	if _, err := bp.FetchPage(1); !errors.Is(err, ErrNoFreeFrame) {
+	if _, err := h.FetchPage(1); !errors.Is(err, ErrNoFreeFrame) {
 		t.Errorf("FetchPage on a full pool: err = %v, want ErrNoFreeFrame", err)
 	}
 }
@@ -239,15 +287,14 @@ func TestFetchOnFullPoolReturnsErrNoFreeFrame(t *testing.T) {
 // A write error while flushing propagates out of both FlushPage and FlushAll;
 // the page stays dirty so a later flush can retry it.
 func TestFlushWriteFailurePropagates(t *testing.T) {
-	fd := newFakeDisk()
-	bp := NewBufferPool(fd, 2)
+	bp, fd, h := newPool(2)
 
-	_, pid, err := bp.NewPage() // resident
+	_, pid, err := h.NewPage() // resident
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A new page starts clean; dirty it so the flush actually attempts a write.
-	bp.meta[frameOf(t, bp, pid)].dirty = true
+	bp.meta[frameOf(t, h, pid)].dirty = true
 	fd.failWrite = func(id disk.PageID) error {
 		if id == pid {
 			return fmt.Errorf("injected write failure")
@@ -255,24 +302,36 @@ func TestFlushWriteFailurePropagates(t *testing.T) {
 		return nil
 	}
 
-	if err := bp.FlushPage(pid); err == nil {
+	if err := h.FlushPage(pid); err == nil {
 		t.Error("FlushPage did not surface the write error")
 	}
 	if err := bp.FlushAll(); err == nil {
 		t.Error("FlushAll did not surface the write error")
 	}
-	if f := frameOf(t, bp, pid); !bp.meta[f].dirty {
+	if f := frameOf(t, h, pid); !bp.meta[f].dirty {
 		t.Error("page must stay dirty after a failed flush")
+	}
+}
+
+// Sync fsyncs every registered file, and a failure from any of them propagates.
+func TestSyncFailurePropagates(t *testing.T) {
+	bp := NewBufferPool(2)
+	bp.Register(newFakeDisk()) // fine
+	fd := newFakeDisk()
+	fd.failSync = func() error { return fmt.Errorf("injected sync failure") }
+	bp.Register(fd)
+
+	if err := bp.Sync(); err == nil {
+		t.Error("Sync did not surface a file's fsync failure")
 	}
 }
 
 // A failed page load (phase B) must return the acquired frame to the free list
 // so the pool is not permanently short a frame.
 func TestFetchReadFailureReturnsFrame(t *testing.T) {
-	fd := newFakeDisk() // no pages: any read is out of range
-	bp := NewBufferPool(fd, 2)
+	bp, _, h := newPool(2) // no pages: any read is out of range
 
-	if _, err := bp.FetchPage(0); err == nil {
+	if _, err := h.FetchPage(0); err == nil {
 		t.Fatal("FetchPage succeeded on a page that does not exist on disk")
 	}
 	if got := len(bp.freeList); got != 2 {

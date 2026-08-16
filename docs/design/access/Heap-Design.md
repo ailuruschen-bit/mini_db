@@ -65,7 +65,7 @@ type pager interface {
 
 Named for the capability (something that serves pages), not an implementation. It keeps the coupling small, lets tests substitute a fake pool that fails on demand, and leaves room for a different page source later. `*buffer.BufferPool` satisfies it.
 
-The pool serves **raw frames** (`*page.Page`): it owns the 8 KB bytes but imposes no layout. The heap overlays its own interpretation with `page.AsSlottedPage(raw)` — a zero-copy view — so the buffer pool can back files of different page kinds (a heap file here, a B+Tree index file later). `NewPage` returns a zeroed, unformatted frame; the heap formats it with `Init` and, because that format then lives only in memory, unpins it dirty so it reaches disk — even when the tuple is too large to fit, so the file never holds an unformatted page that a later `Scan` would misread.
+The pool serves **raw frames** (`*page.Page`): it owns the 8 KB bytes but imposes no layout. The heap overlays its own interpretation with `page.AsSlottedPage(raw)` — a zero-copy view — so the buffer pool can back files of different page kinds (a heap file here, a B+Tree index file elsewhere), sharing one cache across them. `NewPage` returns a zeroed, unformatted frame; the heap formats it with `Init` and, because that format then lives only in memory, unpins it dirty so it reaches disk — even when the tuple is too large to fit, so the file never holds an unformatted page that a later `Scan` would misread.
 
 ---
 

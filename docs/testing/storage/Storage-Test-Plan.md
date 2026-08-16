@@ -18,7 +18,7 @@ The module is built bottom-up: `page` (byte layout) → `disk` (pages ↔ file) 
 
 **disk** (`disk_test.go`): `tempDBPath`, `writeZeroPages`, `fileSize`, `filledPage(b)`, `mustOpen`.
 
-**buffer**: `probeOffset` + `writeProbe`/`readProbe` (a recognisable body byte), `mustPool` (real disk over a temp file), `readProbeFromDisk` (read a page straight from the file, bypassing the pool), and `fakeDisk` — an in-memory `diskManager` whose `ReadPage`/`WritePage`/`AllocatePage` can be made to fail on demand, so the pool's error-recovery paths can be driven deterministically.
+**buffer**: `probeOffset` + `writeProbe`/`readProbe` (a recognisable body byte), `mustPool` (a real-disk pool + a registered `FileHandle` + path), `newPool` (white-box: a pool + a `fakeDisk` + its handle), `readProbeFromDisk` (read a page straight from the file, bypassing the pool), and `fakeDisk` — an in-memory `diskManager` whose `ReadPage`/`WritePage`/`AllocatePage`/`Sync` can be made to fail on demand, so the pool's error-recovery paths can be driven deterministically.
 
 ---
 
@@ -95,12 +95,13 @@ Tracks evictable frames (pin count 0) and yields the least-recently-used one. No
 
 ## 8. BufferPool (`buffer_pool_test.go` black-box `buffer_test`, `buffer_pool_internal_test.go` white-box)
 
-A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU eviction, and flush/sync. v1 uses a single lock over all metadata and holds it across disk I/O; page *contents* are not lock-protected, so concurrency tests partition page ownership.
+A fixed set of frames caching disk pages **across every registered file**, with pin counting, a dirty flag, LRU eviction, and flush/sync. Files register via `Register`, returning a `FileHandle` that binds one file's id and presents the single-file page API (so heap/nbtree consume it unchanged); the pool keys pages by `{file, page}`. v1 uses a single lock over all metadata and holds it across disk I/O; page *contents* are not lock-protected, so concurrency tests partition page ownership.
 
-**Construction (white-box)**
+**Construction & multi-file (white-box)**
 
 - [x] Non-positive pool size panics.
 - [x] A fresh pool has every frame in the free list; nothing resident or evictable.
+- [x] The same page id in two different files occupies two different frames (the `{file, page}` key keeps files from colliding); `pageTable` holds one entry per file.
 
 **Fetch & pin**
 
@@ -122,6 +123,7 @@ A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU e
 - [x] `FlushPage` pushes a dirty page's bytes to disk without evicting; a second flush of a now-clean page is a no-op.
 - [x] `dirty` is sticky: a later clean unpin does not clear a change an earlier holder reported.
 - [x] **Reopen capstone:** create pages, write probes, `FlushAll`, `Sync`, close; reopen the file and read every probe back.
+- [x] **Two files persist independently:** two files registered in one shared pool each keep their own page contents across a `FlushAll`/`Sync`/reopen (the `{file, page}` key keeps them apart on disk too).
 
 **Error paths (mostly white-box via `fakeDisk`)**
 
@@ -131,6 +133,7 @@ A fixed set of frames caching disk pages, with pin counting, a dirty flag, LRU e
 - [x] A failed `AllocatePage` returns the acquired frame to the free list; the pool recovers.
 - [x] A failed page load (phase B) returns the acquired frame to the free list.
 - [x] A write error while flushing propagates out of `FlushPage` and `FlushAll`; the page stays dirty for a retry.
+- [x] A `Sync` failure from any registered file propagates out of `Sync`.
 
 **Concurrency (`-race`)**
 

@@ -25,6 +25,8 @@
   - [B+Tree インデックス設計](design/access/BTree-Index-Design.ja.md)
 - **レコード**
   - [レコードエンコード設計](design/record/Record-Encoding-Design.ja.md)
+- **カタログ**
+  - [システムカタログ設計](design/catalog/Catalog-Design.ja.md)
 
 ### テスト
 - [テスト規約](testing/Test-Conventions.ja.md) — 全モジュール共通のルール
@@ -34,3 +36,5 @@
   - [アクセスモジュール テスト計画](testing/access/Access-Test-Plan.ja.md)
 - **レコード**
   - [レコードモジュール テスト計画](testing/record/Record-Test-Plan.ja.md)
+- **カタログ**
+  - [カタログモジュール テスト計画](testing/catalog/Catalog-Test-Plan.ja.md)

@@ -25,6 +25,8 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
   - [B+Tree Index Design](design/access/BTree-Index-Design.md)
 - **Record**
   - [Record Encoding Design](design/record/Record-Encoding-Design.md)
+- **Catalog**
+  - [System Catalog Design](design/catalog/Catalog-Design.md)
 
 ### Testing
 - [Test Conventions](testing/Test-Conventions.md) — global rules for all modules
@@ -34,3 +36,5 @@ Documentation is organized by purpose. Every document is bilingual: the base fil
   - [Access Module Test Plan](testing/access/Access-Test-Plan.md)
 - **Record**
   - [Record Module Test Plan](testing/record/Record-Test-Plan.md)
+- **Catalog**
+  - [Catalog Module Test Plan](testing/catalog/Catalog-Test-Plan.md)

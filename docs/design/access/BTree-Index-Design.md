@@ -11,7 +11,7 @@ The B+Tree access method (`internal/access/nbtree`) is a **secondary index**: it
         BTree  (this module)   ── turns pages into a sorted key → TID map
               │  FetchPage / NewPage / UnpinPage / NumPages
               ▼
-        BufferPool → DiskManager   (its own index file)
+        FileHandle → BufferPool (shared) → DiskManager   (this index's file)
               │
         heap.TID ─────────────────► Heap  (resolve TID → row bytes)
 ```
@@ -28,7 +28,7 @@ A B+Tree index precomputes a **sorted** map from key value to TID. Descending it
 
 ## 2. File storage strategy
 
-- **One index file per index.** An index is built over one column of a heap table; a table may carry several indexes. Which index belongs to which table/column is the job of the **system catalog** (deferred). In v1 the index file is bound to its own `DiskManager` and its own `BufferPool` instance — a separate memory budget from the heap's pool, because a v1 pool caches a single file (see debt: multi-file pool).
+- **One index file per index.** An index is built over one column of a heap table; a table may carry several indexes. Which index belongs to which table/column is the job of the **system catalog** (deferred). The index file is reached through a `buffer.FileHandle` over a `BufferPool` that may be **shared** with the heap and other indexes — the pool caches many files, keyed by `{fileID, pid}`, and the handle binds this file's id so `nbtree` still consumes the single-file `pager` interface unchanged.
 - **The index file is a pile of pages**, same as a heap file, but the page layout is a **B+Tree node**, not a slotted page. The buffer pool serves raw `*page.Page` frames and imposes no layout; `nbtree` overlays a **node view** on `p.Bytes()`, exactly as `heap` overlays `AsSlottedPage` — this is why the frame type is layout-agnostic.
 
 ```
@@ -217,7 +217,6 @@ The pool serves raw frames; `nbtree` overlays its node view. A descent pins one 
 - **Delete** — needs the underflow half of balancing: **merge** or **redistribute** with a sibling when a node drops below half full. Like heap delete, it also waits on MVCC. Absent it, deletes would waste space but still never make the tree taller.
 - **Duplicate keys** — v1 requires unique keys; a non-unique index (many rows per key value) needs duplicate-key handling in split/search.
 - **Variable-length / `Text` keys** — reintroduce a directory-like indirection inside the node; v1 keys are fixed `int64`.
-- **Multi-file shared pool** — v1 gives the index its own pool over its own file; one pool serving heap + index files needs the composite `{fileID, pid}` key (buffer-pool debt).
 - **Neutral home for `TID`** — currently `heap.TID`; a shared physical-row-address type would decouple the two access methods.
 - **Doubly-linked leaves / bulk load** — v1 chains leaves forward only; sequential bulk insertion leaves nodes ~half full (space, not height).
 

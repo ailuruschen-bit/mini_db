@@ -22,7 +22,7 @@ func newHeap(t *testing.T, poolSize int) *heap.Heap {
 		t.Fatalf("open disk: %v", err)
 	}
 	t.Cleanup(func() { _ = dm.Close() })
-	return heap.NewHeap(buffer.NewBufferPool(dm, poolSize))
+	return heap.NewHeap(buffer.NewBufferPool(poolSize).Register(dm))
 }
 
 // payload builds a distinct, verifiable tuple of the given size for seed.
@@ -258,8 +258,8 @@ func TestHeapPersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool1 := buffer.NewBufferPool(dm1, 8)
-	h1 := heap.NewHeap(pool1)
+	pool1 := buffer.NewBufferPool(8)
+	h1 := heap.NewHeap(pool1.Register(dm1))
 	var tids []heap.TID
 	for i := range 5 {
 		tid, err := h1.Insert([]byte(fmt.Sprintf("row-%d", i)))
@@ -284,7 +284,7 @@ func TestHeapPersistsAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = dm2.Close() }()
-	h2 := heap.NewHeap(buffer.NewBufferPool(dm2, 8))
+	h2 := heap.NewHeap(buffer.NewBufferPool(8).Register(dm2))
 	for i, tid := range tids {
 		got, err := h2.Get(tid)
 		if err != nil {

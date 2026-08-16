@@ -20,7 +20,7 @@ func TestRecordHeapIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = dm.Close() }()
-	h := heap.NewHeap(buffer.NewBufferPool(dm, 8))
+	h := heap.NewHeap(buffer.NewBufferPool(8).Register(dm))
 	s := sampleSchema()
 
 	want := []record.Row{
